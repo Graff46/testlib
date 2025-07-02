@@ -97,8 +97,16 @@ var App = new (function () {
                 },
 
                 set: function (target, prop, val, receiver) {
-                    if ((!skeepProxySetFlag) && (val instanceof Object))
+                    if ((!skeepProxySetFlag) && (val instanceof Object)) {
                         val = env.buildData(val);
+
+                        const prp = Object.create(null);
+                        for (const k in target[prop])
+                            if (k in val) prp[k] = appEnv.data2id.get(receiver[prop])[k];
+
+                        appEnv.data2id.set(val, prp);
+                        appEnv.data2id.delete(receiver[prop]);
+                    }
 
                     const result = Reflect.set(target, prop, val, receiver);
 
