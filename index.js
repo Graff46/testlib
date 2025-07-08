@@ -1,20 +1,22 @@
 var getEl = (el) => el instanceof Element ? el : document.querySelector(el);
 
+var isProxy = Symbol('isProxy');
+
 var __elID = 0;
-function setID () {
+function setID() {
     return ++__elID;
 }
 
 var App = new (function () {
-    this.data2id        = new WeakMap();
-    this.id2data        = new WeakMap();
-    this.tempPath       = new Map();
-    this.repeatStore    = new WeakMap();
+    this.data2id = new WeakMap();
+    this.id2data = new WeakMap();
+    this.tempPath = new Map();
+    this.repeatStore = new WeakMap();
 
-    this.repeatEls      = new WeakMap();
-    this.bindEls        = new WeakMap();
+    this.repeatEls = new WeakMap();
+    this.bindEls = new WeakMap();
 
-    this.resetTempPath = function() {
+    this.resetTempPath = function () {
         this.tempPath.clear();
     }
 
@@ -36,18 +38,18 @@ var App = new (function () {
 
             let propList = this.data2id.get(obj);
 
-            if (!propList) 
-                this.data2id.set(obj, {[prop]: []});
+            if (!propList)
+                this.data2id.set(obj, { [prop]: [] });
             else if (!(prop in propList))
                 propList[prop] = [];
 
-            this.data2id.get(obj)[prop].push({el: el, handler: handler, arg: arg});
+            this.data2id.get(obj)[prop].push({ el: el, handler: handler, arg: arg });
         });
 
         this.resetTempPath();
     }
 
-    this.addRepeat = function(handler, context, el, iterHandle, bindHandle, group) {
+    this.addRepeat = function (handler, context, el, iterHandle, bindHandle, group) {
         var storeObj = {
             handler: handler,
             args: [el, iterHandle, bindHandle, group],
@@ -55,14 +57,15 @@ var App = new (function () {
         };
 
         this.tempPath.forEach((prop, obj) => {
-            const story = this.repeatStore.get(obj);
+            let story = this.repeatStore.get(obj);
 
             if (!story)
-                this.repeatStore.set(obj, {[prop]: [storeObj]});
-            else if (!(prop in story))
-                    story[prop] = [storeObj];
-                else
-                    story[prop].push(storeObj);
+                return this.repeatStore.set(obj, [storeObj]);
+
+            /*if (!(prop in story))
+                story[prop] = [];*/
+
+            story.push(storeObj);
         });
 
         this.resetTempPath();
@@ -74,20 +77,19 @@ var App = new (function () {
     var skeepProxySetFlag = false;
 
     return {
-        buildData: function(obj) {
+        buildData: function (obj) {
             appEnv.resetTempPath();
             var env = this;
 
             return new Proxy(obj, {
-                observedKeys: {},
-
                 get: function (target, prop, receiver) {
+                    if (prop === isProxy) return true;
+
                     if (needReadGetterFlag) {
-                        if ((target[prop] instanceof Object) && (! (prop in this.observedKeys) )) {
+                        if ((target[prop] instanceof Object) && (!(target[prop][isProxy]))) {
                             skeepProxySetFlag = true;
                             receiver[prop] = env.buildData(target[prop]);
                             skeepProxySetFlag = false;
-                            this.observedKeys[prop] = true;
                         }
 
                         appEnv.proxyGet(receiver, prop);
@@ -97,15 +99,29 @@ var App = new (function () {
                 },
 
                 set: function (target, prop, val, receiver) {
-                    if ((!skeepProxySetFlag) && (val instanceof Object)) {
+                    const cond = (!skeepProxySetFlag) && (val instanceof Object);
+                    if (cond)
                         val = env.buildData(val);
 
-                        const prp = Object.create(null);
-                        for (const k in target[prop])
-                            if (k in val) prp[k] = appEnv.data2id.get(receiver[prop])[k];
+                    if (cond) {
+                        var prp = Object.create(null);
+
+                        var vl = appEnv.data2id.get(receiver[prop]);
+                        const vl2 = appEnv.repeatStore.get(receiver[prop]);
+
+                        if (vl) {
+                            for (const k in target[prop]) {
+                                if (k in val) prp[k] = vl[k];
+                            }
+                        }
 
                         appEnv.data2id.set(val, prp);
                         appEnv.data2id.delete(receiver[prop]);
+
+                        if (vl2) {
+                            appEnv.repeatStore.set(val, vl2);
+                            appEnv.repeatStore.delete(receiver[prop]);
+                        }
                     }
 
                     const result = Reflect.set(target, prop, val, receiver);
@@ -115,10 +131,13 @@ var App = new (function () {
                     let storeProps = appEnv.data2id.get(receiver);
                     if ((storeProps) && (prop in storeProps))
                         storeProps[prop].forEach(elId => elId.el.value = elId.handler(elId.arg));
-                    
+
                     storeProps = appEnv.repeatStore.get(receiver);
-                    if ((storeProps) && (prop in storeProps))
-                        storeProps[prop].forEach(store => store.handler.apply(store.context, store.args));
+
+                    if (storeProps) {
+                        appEnv.repeatStore.delete(receiver);
+                        storeProps.forEach(store => store.handler.apply(store.context, store.args));
+                    }
 
                     return result;
                 },
@@ -144,7 +163,7 @@ var App = new (function () {
         repeat: function (el, iterHandle, bindHandle) {
             var elmObj = getEl(el);
 
-            function handler(elm, iterHndle, bindHndle, updGroup = null ) {
+            function handler(elm, iterHndle, bindHndle, updGroup = null) {
                 needReadGetterFlag = true;
                 var iter = iterHndle();
                 needReadGetterFlag = false;
@@ -156,10 +175,15 @@ var App = new (function () {
                 var elHTML = String();
                 var newEl = null
                 var keys = [];
+                var tmpKeys = Object.create(null);
 
                 if (updGroup) {
-                    for (const k in updGroup)
-                        if (!(k in iter)) iter[k].remove();
+                    for (const k in updGroup) {
+                        if (!(k in iter))
+                            updGroup[k].remove();
+                        else
+                            group[k] = document.querySelector(`[__key="${k}"]`);
+                    }
 
                     const obj = Object.create(null);
                     for (const k in iter)
@@ -174,21 +198,20 @@ var App = new (function () {
                     newEl.setAttribute('__key', key);
 
                     elHTML += newEl.outerHTML;
-                    
+
                     keys.push(key);
                 }
 
                 elm.hidden = true;
                 elm.insertAdjacentHTML('afterEnd', elHTML);
 
-                for (const key of keys) {
+                keys.forEach(function (key) {
                     group[key] = document.querySelector(`[__key="${key}"]`);
-                    
-                    if (bindHandle) 
-                        this.bind(group[key], bindHndle, key);
-                }
 
-                keys = null;
+                    if (bindHandle) this.bind(group[key], bindHndle, key);
+                }, this);
+
+                keys = tmpKeys = null;
             }
 
             handler.call(this, elmObj, iterHandle, bindHandle);
