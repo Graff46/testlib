@@ -3,7 +3,6 @@ var App = new (function () {
     var isProxy = Symbol('isProxy');
 
     var data2id        = new WeakMap();
-    var id2data        = new WeakMap();
     var tempPath       = new Map();
     var repeatStore    = new WeakMap();
 
@@ -12,13 +11,7 @@ var App = new (function () {
     }
 
     function addBind(el, handler, arg) {
-        var i = 0;
-        var cnt = tempPath.size;
-
         tempPath.forEach((prop, obj) => {
-            if (++i == cnt)
-                id2data.set(el, (new WeakMap()).set(obj, prop));
-
             let propList = data2id.get(obj);
 
             if (!propList)
@@ -109,7 +102,7 @@ var App = new (function () {
                     let storeProps = data2id.get(receiver);
                     
                     if ((storeProps) && (prop in storeProps))
-                        storeProps[prop].forEach(elId => elId.el.value = elId.handler(elId.arg));
+                        storeProps[prop].forEach(elId => elId.el.value = elId.handler(elId.arg) ?? null);
 
                     storeProps = repeatStore.get(receiver);
 
@@ -127,7 +120,7 @@ var App = new (function () {
             const elm = getEl(el);
 
             needReadGetterFlag = true;
-            elm.value = handler(arg);
+            elm.value = handler(arg) ?? null;
             needReadGetterFlag = false;
 
             const propPath = Array.from(tempPath.values());
