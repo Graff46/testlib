@@ -2,35 +2,29 @@ function App (wobj) {
     var getEl = el => el instanceof Element ? el : document.querySelector(el);
     var isProxy = Symbol('isProxy');
 
-    this.data2id        = new Set();
-    this.id2data        = new WeakMap();
-    this.tempPath       = new Map();
-    this.repeatStore    = new Set();
+    var data2id        = new Set();
+    var tempPath       = new Map();
+    var repeatStore    = new Set();
 
-    this.repeatEls      = new WeakMap();
-    this.bindEls        = new WeakMap();
-
-    this.resetTempPath = function () {
-        this.tempPath.clear();
+    function resetTempPath() {
+        tempPath.clear();
     }
 
-    this.addBind = function (handler) {
-        this.data2id.add(handler)
-        this.resetTempPath();
+    function addBind(handler) {
+        data2id.add(handler)
+        resetTempPath();
     }
 
-    this.addRepeat = function (handler) {
-        this.repeatStore.add(handler);
-        this.resetTempPath();
+    function addRepeat(handler) {
+        repeatStore.add(handler);
+        resetTempPath();
     }
-
-    var appEnv = this;
 
     var needReadGetterFlag = false;
     var skeepProxySetFlag = false;
 
     function buildData(obj) {
-        appEnv.resetTempPath();
+        resetTempPath();
 
         return new Proxy(obj, {
             get: function (target, prop, receiver) {
@@ -43,7 +37,7 @@ function App (wobj) {
                         skeepProxySetFlag = false;
                     }
 
-                    appEnv.tempPath.set(receiver, prop);
+                    tempPath.set(receiver, prop);
                 }
 
                 return Reflect.get(target, prop, receiver);
@@ -58,9 +52,10 @@ function App (wobj) {
 
                 if (skeepProxySetFlag) return result;
 
-                appEnv.data2id.forEach(handler => handler());
-                const tmp = Array.from(appEnv.repeatStore);
-                appEnv.repeatStore.clear();
+                data2id.forEach(handler => handler());
+                
+                const tmp = new Set(repeatStore);
+                repeatStore.clear();
                 tmp.forEach(handler => handler());
 
                 return result;
@@ -82,9 +77,9 @@ function App (wobj) {
             elm.value = handler(workData, arg);
             needReadGetterFlag = false;
 
-            const propPath = Array.from(appEnv.tempPath.values());
+            const propPath = Array.from(tempPath.values());
 
-            appEnv.addBind(() => elm.value = handler(workData, arg));
+            addBind(() => elm.value = handler(workData, arg));
 
             elm.addEventListener('change', function (event) {
                 propPath.reduce(
@@ -95,7 +90,7 @@ function App (wobj) {
         },
 
         repeat: function (el, iterHandle, bindHandle) {
-            var elmObj = getEl(el);
+            const elmObj = getEl(el);
 
             function handler(elm, iterHndle, bindHndle, updGroup = null) {
                 needReadGetterFlag = true;
@@ -138,7 +133,7 @@ function App (wobj) {
                     if (bindHandle) this.bind(group[key], bindHndle, key);
                 });
 
-                appEnv.addRepeat(() => handler.call(this, elm, iterHndle, bindHndle, group));
+                addRepeat(() => handler.call(this, elm, iterHndle, bindHndle, group));
 
                 keys = null;
             }
