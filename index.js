@@ -14,14 +14,6 @@ var App = new (function () {
         this.tempPath.clear();
     }
 
-    this.proxyGet = function (obj, prop) {
-        this.tempPath.set(obj, prop);
-    };
-
-    this.getData = (obj) => {
-        return this.data2id.get(obj);
-    };
-
     this.addBind = function (el, handler, arg) {
         var i = 0;
         var cnt = this.tempPath.size;
@@ -83,7 +75,7 @@ var App = new (function () {
                             skeepProxySetFlag = false;
                         }
 
-                        appEnv.proxyGet(receiver, prop);
+                        appEnv.tempPath.set(receiver, prop);
                     }
 
                     return Reflect.get(target, prop, receiver);
@@ -142,12 +134,16 @@ var App = new (function () {
             elm.value = handler(arg);
             needReadGetterFlag = false;
 
+            const propPath = Array.from(appEnv.tempPath.values());
+            const rootObj = appEnv.tempPath.keys().next().value;
+
             appEnv.addBind(elm, handler, arg);
 
             elm.addEventListener('change', function (event) {
-                const store = appEnv.id2data[event.currentTarget.id];
-
-                store.target[store.prop] = event.currentTarget.value;
+                propPath.reduce(
+                    (stack, prop, i) => ++i === propPath.length ? stack[prop] = event.currentTarget.value : stack[prop],
+                    rootObj
+                );
             });
         },
 
