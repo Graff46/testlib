@@ -2,66 +2,61 @@ var App = new (function () {
     var getEl = el => el instanceof Element ? el : document.querySelector(el);
     var isProxy = Symbol('isProxy');
 
-    this.data2id        = new WeakMap();
-    this.id2data        = new WeakMap();
-    this.tempPath       = new Map();
-    this.repeatStore    = new WeakMap();
+    var data2id        = new WeakMap();
+    var id2data        = new WeakMap();
+    var tempPath       = new Map();
+    var repeatStore    = new WeakMap();
 
-    this.repeatEls      = new WeakMap();
-    this.bindEls        = new WeakMap();
-
-    this.resetTempPath = function () {
-        this.tempPath.clear();
+    function resetTempPath() {
+        tempPath.clear();
     }
 
-    this.addBind = function (el, handler, arg) {
+    function addBind(el, handler, arg) {
         var i = 0;
-        var cnt = this.tempPath.size;
+        var cnt = tempPath.size;
 
-        this.tempPath.forEach((prop, obj) => {
+        tempPath.forEach((prop, obj) => {
             if (++i == cnt)
-                this.id2data.set(el, (new WeakMap()).set(obj, prop));
+                id2data.set(el, (new WeakMap()).set(obj, prop));
 
-            let propList = this.data2id.get(obj);
+            let propList = data2id.get(obj);
 
             if (!propList)
-                this.data2id.set(obj, { [prop]: [] });
+                data2id.set(obj, { [prop]: [] });
             else if (!(prop in propList))
                 propList[prop] = [];
 
-            this.data2id.get(obj)[prop].push({ el: el, handler: handler, arg: arg });
+            data2id.get(obj)[prop].push({ el: el, handler: handler, arg: arg });
         });
 
-        this.resetTempPath();
+        resetTempPath();
     }
 
-    this.addRepeat = function (handler, context, el, iterHandle, bindHandle, group) {
+    function addRepeat(handler, context, el, iterHandle, bindHandle, group) {
         var storeObj = {
             handler: handler,
             args: [el, iterHandle, bindHandle, group],
             context: context,
         };
 
-        this.tempPath.forEach((prop, obj) => {
-            let story = this.repeatStore.get(obj);
+        tempPath.forEach((prop, obj) => {
+            let story = repeatStore.get(obj);
 
             if (!story)
-                return this.repeatStore.set(obj, [storeObj]);
+                return repeatStore.set(obj, [storeObj]);
 
             story.push(storeObj);
         });
 
-        this.resetTempPath();
+        resetTempPath();
     }
 
-    var appEnv = this;
-
-    var needReadGetterFlag = false;
-    var skeepProxySetFlag = false;
+    var needReadGetterFlag  = false;
+    var skeepProxySetFlag   = false;
 
     return {
         buildData: function (obj) {
-            appEnv.resetTempPath();
+            resetTempPath();
             var env = this;
 
             return new Proxy(obj, {
@@ -75,7 +70,7 @@ var App = new (function () {
                             skeepProxySetFlag = false;
                         }
 
-                        appEnv.tempPath.set(receiver, prop);
+                        tempPath.set(receiver, prop);
                     }
 
                     return Reflect.get(target, prop, receiver);
@@ -83,14 +78,14 @@ var App = new (function () {
 
                 set: function (target, prop, val, receiver) {
                     const cond = (!skeepProxySetFlag) && (val instanceof Object);
-                    if (cond)
-                        val = env.buildData(val);
 
                     if (cond) {
+                        val = env.buildData(val);
+
                         var prp = Object.create(null);
 
-                        var bindStory = appEnv.data2id.get(receiver[prop]);
-                        const rpStory = appEnv.repeatStore.get(receiver[prop]);
+                        var bindStory = data2id.get(receiver[prop]);
+                        const rpStory = repeatStore.get(receiver[prop]);
 
                         if (bindStory) {
                             for (const k in target[prop]) {
@@ -98,12 +93,12 @@ var App = new (function () {
                             }
                         }
 
-                        appEnv.data2id.set(val, prp);
-                        appEnv.data2id.delete(receiver[prop]);
+                        data2id.set(val, prp);
+                        data2id.delete(receiver[prop]);
 
                         if (rpStory) {
-                            appEnv.repeatStore.set(val, rpStory);
-                            appEnv.repeatStore.delete(receiver[prop]);
+                            repeatStore.set(val, rpStory);
+                            repeatStore.delete(receiver[prop]);
                         }
                     }
 
@@ -111,14 +106,15 @@ var App = new (function () {
 
                     if (skeepProxySetFlag) return result;
 
-                    let storeProps = appEnv.data2id.get(receiver);
+                    let storeProps = data2id.get(receiver);
+                    
                     if ((storeProps) && (prop in storeProps))
                         storeProps[prop].forEach(elId => elId.el.value = elId.handler(elId.arg));
 
-                    storeProps = appEnv.repeatStore.get(receiver);
+                    storeProps = repeatStore.get(receiver);
 
                     if (storeProps) {
-                        appEnv.repeatStore.delete(receiver);
+                        repeatStore.delete(receiver);
                         storeProps.forEach(store => store.handler.apply(store.context, store.args));
                     }
 
@@ -134,10 +130,10 @@ var App = new (function () {
             elm.value = handler(arg);
             needReadGetterFlag = false;
 
-            const propPath = Array.from(appEnv.tempPath.values());
-            const rootObj = appEnv.tempPath.keys().next().value;
+            const propPath = Array.from(tempPath.values());
+            const rootObj = tempPath.keys().next().value;
 
-            appEnv.addBind(elm, handler, arg);
+            addBind(elm, handler, arg);
 
             elm.addEventListener('change', function (event) {
                 propPath.reduce(
@@ -157,7 +153,7 @@ var App = new (function () {
 
                 var group = Object.create(null);
 
-                appEnv.addRepeat(handler, this, elm, iterHandle, bindHandle, group);
+                addRepeat(handler, this, elm, iterHandle, bindHandle, group);
 
                 if (updGroup) {
                     for (const k in updGroup) {
