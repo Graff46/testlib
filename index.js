@@ -1,20 +1,14 @@
-var getEl = (el) => el instanceof Element ? el : document.querySelector(el);
-
-var isProxy = Symbol('isProxy');
-
-var __elID = 0;
-function setID() {
-    return ++__elID;
-}
-
 var App = new (function () {
-    this.data2id = new WeakMap();
-    this.id2data = new WeakMap();
-    this.tempPath = new Map();
-    this.repeatStore = new WeakMap();
+    var getEl = el => el instanceof Element ? el : document.querySelector(el);
+    var isProxy = Symbol('isProxy');
 
-    this.repeatEls = new WeakMap();
-    this.bindEls = new WeakMap();
+    this.data2id        = new WeakMap();
+    this.id2data        = new WeakMap();
+    this.tempPath       = new Map();
+    this.repeatStore    = new WeakMap();
+
+    this.repeatEls      = new WeakMap();
+    this.bindEls        = new WeakMap();
 
     this.resetTempPath = function () {
         this.tempPath.clear();
@@ -62,9 +56,6 @@ var App = new (function () {
             if (!story)
                 return this.repeatStore.set(obj, [storeObj]);
 
-            /*if (!(prop in story))
-                story[prop] = [];*/
-
             story.push(storeObj);
         });
 
@@ -106,20 +97,20 @@ var App = new (function () {
                     if (cond) {
                         var prp = Object.create(null);
 
-                        var vl = appEnv.data2id.get(receiver[prop]);
-                        const vl2 = appEnv.repeatStore.get(receiver[prop]);
+                        var bindStory = appEnv.data2id.get(receiver[prop]);
+                        const rpStory = appEnv.repeatStore.get(receiver[prop]);
 
-                        if (vl) {
+                        if (bindStory) {
                             for (const k in target[prop]) {
-                                if (k in val) prp[k] = vl[k];
+                                if (k in val) prp[k] = bindStory[k];
                             }
                         }
 
                         appEnv.data2id.set(val, prp);
                         appEnv.data2id.delete(receiver[prop]);
 
-                        if (vl2) {
-                            appEnv.repeatStore.set(val, vl2);
+                        if (rpStory) {
+                            appEnv.repeatStore.set(val, rpStory);
                             appEnv.repeatStore.delete(receiver[prop]);
                         }
                     }
@@ -172,11 +163,6 @@ var App = new (function () {
 
                 appEnv.addRepeat(handler, this, elm, iterHandle, bindHandle, group);
 
-                var elHTML = String();
-                var newEl = null
-                var keys = [];
-                var tmpKeys = Object.create(null);
-
                 if (updGroup) {
                     for (const k in updGroup) {
                         if (!(k in iter))
@@ -184,34 +170,34 @@ var App = new (function () {
                         else
                             group[k] = document.querySelector(`[__key="${k}"]`);
                     }
-
-                    const obj = Object.create(null);
-                    for (const k in iter)
-                        if (!(k in updGroup)) obj[k] = iter[k];
-
-                    iter = obj;
                 }
 
+                var elHTML = String();
+                var newEl = null
+                var keys = [];
+
                 for (const key in iter) {
-                    newEl = elm.cloneNode(true);
-                    newEl.hidden = false;
-                    newEl.setAttribute('__key', key);
+                    if ((!updGroup) || (!(key in updGroup))) {
+                        newEl = elm.cloneNode(true);
+                        newEl.hidden = false;
+                        newEl.setAttribute('__key', key);
 
-                    elHTML += newEl.outerHTML;
+                        elHTML = elHTML.concat(newEl.outerHTML);
 
-                    keys.push(key);
+                        keys.push(key);
+                    }
                 }
 
                 elm.hidden = true;
                 elm.insertAdjacentHTML('afterEnd', elHTML);
 
-                keys.forEach(function (key) {
+                keys.forEach(key => {
                     group[key] = document.querySelector(`[__key="${key}"]`);
 
                     if (bindHandle) this.bind(group[key], bindHndle, key);
-                }, this);
+                });
 
-                keys = tmpKeys = null;
+                keys = null;
             }
 
             handler.call(this, elmObj, iterHandle, bindHandle);
