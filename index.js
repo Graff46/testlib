@@ -1,191 +1,249 @@
 var App = new (function () {
-    var getEl = el => el instanceof Element ? el : document.querySelector(el);
-    var isProxy = Symbol('isProxy');
+	var getEl = el => el instanceof Element ? el : document.querySelector(el);
+	var isProxy = Symbol('isProxy');
 
-    var data2id        = new WeakMap();
-    var tempPath       = new Map();
-    var repeatStore    = new WeakMap();
+	var data2id        	= new WeakMap();
+	var tempPath       	= new Map();
+	var repeatStore    	= new WeakMap();
 
-    function resetTempPath() {
-        tempPath.clear();
-    }
+	var bindEl2data    	= new WeakMap();
+	var rptEl2data     	= new WeakMap();
+	var el2eventHandler	= new WeakMap();
 
-    function addBind(el, handler, arg) {
-        tempPath.forEach((prop, obj) => {
-            let propList = data2id.get(obj);
+	function resetTempPath() {
+		tempPath.clear();
+	}
 
-            if (!propList)
-                data2id.set(obj, { [prop]: [] });
-            else if (!(prop in propList))
-                propList[prop] = [];
+	function addBind(el, handler, arg) {
+		tempPath.forEach((prop, obj) => {
+			let propList = data2id.get(obj);
 
-            data2id.get(obj)[prop].push({ el: el, handler: handler, arg: arg });
-        });
+			if (!propList)
+				data2id.set(obj, { [prop]: [] });
+			else if (!(prop in propList))
+				propList[prop] = [];
 
-        resetTempPath();
-    }
+			data2id.get(obj)[prop].push({el: el, handler: handler, arg: arg});
+		});
 
-    function addRepeat(handler, context, el, iterHandle, bindHandle, group) {
-        var storeObj = {
-            handler: handler,
-            args: [el, iterHandle, bindHandle, group],
-            context: context,
-        };
+		resetTempPath();
+	}
 
-        tempPath.forEach((prop, obj) => {
-            let story = repeatStore.get(obj);
+	function addRepeat(handler, context, el, iterHandle, bindHandle, group) {
+		var storeObj = {
+			handler: handler,
+			args: [el, iterHandle, bindHandle, group],
+			context: context,
+		};
 
-            if (!story)
-                return repeatStore.set(obj, [storeObj]);
+		tempPath.forEach((prop, obj) => {
+			let story = repeatStore.get(obj);
 
-            story.push(storeObj);
-        });
+			if (!story)
+				return repeatStore.set(obj, [storeObj]);
 
-        resetTempPath();
-    }
+			story.push(storeObj);
 
-    var needReadGetterFlag  = false;
-    var skeepProxySetFlag   = false;
+			story = rptEl2data.get(el);
+			if (story) {
+				story.push(obj);
+				story.push(storeObj);
+			} else
+				rptEl2data.set(el, [obj, storeObj]);
+		});
 
-    return {
-        buildData: function (obj) {
-            resetTempPath();
-            var env = this;
+		resetTempPath();
+	}
 
-            return new Proxy(obj, {
-                get: function (target, prop, receiver) {
-                    if (prop === isProxy) return true;
+	var needReadGetterFlag  = false;
+	var skeepProxySetFlag   = false;
 
-                    if (needReadGetterFlag) {
-                        if ((target[prop] instanceof Object) && (!(target[prop][isProxy]))) {
-                            skeepProxySetFlag = true;
-                            receiver[prop] = env.buildData(target[prop]);
-                            skeepProxySetFlag = false;
-                        }
+	return {
+		buildData: function (obj) {
+			resetTempPath();
+			var env = this;
 
-                        tempPath.set(receiver, prop);
-                    }
+			return new Proxy(obj, {
+				get: function (target, prop, receiver) {
+					if (prop === isProxy) return true;
 
-                    return Reflect.get(target, prop, receiver);
-                },
+					if (needReadGetterFlag) {
+						if ((target[prop] instanceof Object) && (!(target[prop][isProxy]))) {
+							skeepProxySetFlag = true;
+							receiver[prop] = env.buildData(target[prop]);
+							skeepProxySetFlag = false;
+						}
 
-                set: function (target, prop, val, receiver) {
-                    const cond = (!skeepProxySetFlag) && (val instanceof Object);
+						tempPath.set(receiver, prop);
+					}
 
-                    if (cond) {
-                        val = env.buildData(val);
+					return Reflect.get(target, prop, receiver);
+				},
 
-                        var prp = Object.create(null);
+				set: function (target, prop, val, receiver) {
+					const cond = (!skeepProxySetFlag) && (val instanceof Object);
 
-                        var bindStory = data2id.get(receiver[prop]);
-                        const rpStory = repeatStore.get(receiver[prop]);
+					if (cond) {
+						val = env.buildData(val);
 
-                        if (bindStory) {
-                            for (const k in target[prop]) {
-                                if (k in val) prp[k] = bindStory[k];
-                            }
-                        }
+						var prp = Object.create(null);
 
-                        data2id.set(val, prp);
-                        data2id.delete(receiver[prop]);
+						var bindStory = data2id.get(receiver[prop]);
+						const rpStory = repeatStore.get(receiver[prop]);
 
-                        if (rpStory) {
-                            repeatStore.set(val, rpStory);
-                            repeatStore.delete(receiver[prop]);
-                        }
-                    }
+						if (bindStory) {
+							for (const k in target[prop]) {
+								if (k in val) prp[k] = bindStory[k];
+							}
+						}
 
-                    const result = Reflect.set(target, prop, val, receiver);
+						data2id.set(val, prp);
+						data2id.delete(receiver[prop]);
 
-                    if (skeepProxySetFlag) return result;
+						if (rpStory) {
+							repeatStore.set(val, rpStory);
+							repeatStore.delete(receiver[prop]);
+						}
+					}
 
-                    let storeProps = data2id.get(receiver);
-                    
-                    if ((storeProps) && (prop in storeProps))
-                        storeProps[prop].forEach(elId => elId.el.value = elId.handler(elId.arg) ?? null);
+					const result = Reflect.set(target, prop, val, receiver);
 
-                    storeProps = repeatStore.get(receiver);
+					if (skeepProxySetFlag) return result;
 
-                    if (storeProps) {
-                        repeatStore.delete(receiver);
-                        storeProps.forEach(store => store.handler.apply(store.context, store.args));
-                    }
+					let storeProps = data2id.get(receiver);
+					
+					if ((storeProps) && (prop in storeProps))
+						storeProps[prop].forEach(str => str.el.value = str.handler(str.arg) ?? null);
 
-                    return result;
-                },
-            });
-        },
+					storeProps = repeatStore.get(receiver);
 
-        bind: function (el, handler, arg = false) {
-            const elm = getEl(el);
+					if (storeProps) {
+						repeatStore.delete(receiver);
+						storeProps.forEach(store => store.handler.apply(store.context, store.args));
+					}
 
-            needReadGetterFlag = true;
-            elm.value = handler(arg) ?? null;
-            needReadGetterFlag = false;
+					return result;
+				},
+			});
+		},
 
-            const propPath = Array.from(tempPath.values());
-            const rootObj = tempPath.keys().next().value;
+		bind: function (el, handler, arg = false) {
+			const elm = getEl(el);
 
-            addBind(elm, handler, arg);
+			needReadGetterFlag = true;
+			elm.value = handler(arg) ?? null;
+			needReadGetterFlag = false;
 
-            elm.addEventListener('change', function (event) {
-                propPath.reduce(
-                    (stack, prop, i) => ++i === propPath.length ? stack[prop] = event.currentTarget.value : stack[prop],
-                    rootObj
-                );
-            });
-        },
+			const propPath = Array.from(tempPath.values());
+			const rootObj = tempPath.keys().next().value;
 
-        repeat: function (el, iterHandle, bindHandle) {
-            var elmObj = getEl(el);
+			bindEl2data.set(elm, (new Map()).set(rootObj, propPath));
 
-            function handler(elm, iterHndle, bindHndle, updGroup = null) {
-                needReadGetterFlag = true;
-                var iter = iterHndle();
-                needReadGetterFlag = false;
+			addBind(elm, handler, arg);
 
-                var group = Object.create(null);
+			function eventHandler(event) {
+				propPath.reduce(
+					(stack, prop, i) => ++i === propPath.length ? stack[prop] = event.currentTarget.value : stack[prop],
+					rootObj
+				);
+			}
 
-                addRepeat(handler, this, elm, iterHandle, bindHandle, group);
+			el2eventHandler.set(elm, eventHandler);
 
-                if (updGroup) {
-                    for (const k in updGroup) {
-                        if (!(k in iter))
-                            updGroup[k].remove();
-                        else
-                            group[k] = document.querySelector(`[__key="${k}"]`);
-                    }
-                }
+			elm.addEventListener('change', eventHandler);
+		},
 
-                var elHTML = String();
-                var newEl = null
-                var keys = [];
+		repeat: function (el, iterHandle, bindHandle) {
+			var elmObj = getEl(el);
 
-                for (const key in iter) {
-                    if ((!updGroup) || (!(key in updGroup))) {
-                        newEl = elm.cloneNode(true);
-                        newEl.hidden = false;
-                        newEl.setAttribute('__key', key);
+			function handler(elm, iterHndle, bindHndle, updGroup = null) {
+				needReadGetterFlag = true;
+				var iter = iterHndle();
+				needReadGetterFlag = false;
 
-                        elHTML = elHTML.concat(newEl.outerHTML);
+				var group = Object.create(null);
 
-                        keys.push(key);
-                    }
-                }
+				addRepeat(handler, this, elm, iterHandle, bindHandle, group);
 
-                elm.hidden = true;
-                elm.insertAdjacentHTML('afterEnd', elHTML);
+				if (updGroup) {
+					for (const k in updGroup) {
+						if (!(k in iter))
+							updGroup[k].remove();
+						else
+							group[k] = document.querySelector(`[__key="${k}"]`);
+					}
+				}
 
-                keys.forEach(key => {
-                    group[key] = document.querySelector(`[__key="${key}"]`);
+				var elHTML = String();
+				var newEl = null
+				var keys = [];
 
-                    if (bindHandle) this.bind(group[key], bindHndle, key);
-                });
+				for (const key in iter) {
+					if ((!updGroup) || (!(key in updGroup))) {
+						newEl = elm.cloneNode(true);
+						newEl.hidden = false;
+						newEl.setAttribute('__key', key);
 
-                keys = null;
-            }
+						elHTML = elHTML.concat(newEl.outerHTML);
 
-            handler.call(this, elmObj, iterHandle, bindHandle);
-        },
-    };
+						keys.push(key);
+					}
+				}
+
+				elm.hidden = true;
+				elm.insertAdjacentHTML('afterEnd', elHTML);
+
+				keys.forEach(key => {
+					group[key] = document.querySelector(`[__key="${key}"]`);
+
+					if (bindHandle) this.bind(group[key], bindHndle, key);
+				});
+
+				keys = null;
+			}
+
+			handler.call(this, elmObj, iterHandle, bindHandle);
+		},
+  
+		FL_BIND: 	0b01,
+		FL_REPEAD: 	0b10,
+		FL_ALL: 	0b11,
+
+		unbind: function(el, flag = this.FL_ALL) {
+			const elm = getEl(el);
+			var tmp = null;
+
+			var data = bindEl2data.get(elm);
+
+			if ((flag & this.FL_BIND) && (data) && (data = data.entries().next().value)) {
+				data[1].reduce(
+					(stack, prop) => {
+						tmp = data2id.get(stack)[prop].findIndex(itm => itm.el === elm);
+						delete data2id.get(stack)[prop][tmp];
+
+						return stack[prop];
+					},
+					data[0],
+				);
+
+				elm.removeEventListener('change', el2eventHandler.get(elm));
+
+				bindEl2data.delete(elm);
+				el2eventHandler.delete(elm);
+			}
+
+			data = rptEl2data.get(elm); //repeatStore
+
+			if ((flag & this.FL_REPEAD) && (data)) { //[obj, storeObj]
+				for (let idx = 0; idx <= data.length; idx += 2) {
+
+					for (const k in data[idx])
+						document.querySelector(`[__key="${k}"]`).remove();
+
+					tmp = repeatStore.get(data[idx]).findIndex(itm => itm === data[idx + 1]);
+					delete repeatStore.get(data[idx])[tmp];
+				}
+			}
+		},
+	};
 })();
