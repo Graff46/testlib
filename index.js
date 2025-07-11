@@ -8,6 +8,7 @@ var App = new (function () {
 
 	var bindEl2data    	= new WeakMap();
 	var rptEl2data     	= new WeakMap();
+	var rptEl2group     = new WeakMap();
 	var el2eventHandler	= new WeakMap();
 
 	function resetTempPath() {
@@ -39,18 +40,14 @@ var App = new (function () {
 		tempPath.forEach((prop, obj) => {
 			let story = repeatStore.get(obj);
 
-			if (!story)
-				return repeatStore.set(obj, [storeObj]);
-
-			story.push(storeObj);
-
-			story = rptEl2data.get(el);
-			if (story) {
-				story.push(obj);
-				story.push(storeObj);
-			} else
-				rptEl2data.set(el, [obj, storeObj]);
+			if (story)
+				story.set(el, storeObj);
+			else
+				repeatStore.set(obj, (new Map()).set(el, storeObj));			
 		});
+
+		rptEl2data.set(el, Array.from(tempPath.keys()));
+		rptEl2group.set(el, group);
 
 		resetTempPath();
 	}
@@ -102,6 +99,7 @@ var App = new (function () {
 
 						if (rpStory) {
 							repeatStore.set(val, rpStory);
+							rpStory.forEach(el => rptEl2data.get(el).forEach((sobj, i, arr) => sobj === receiver[prop] ? arr[i] = val : null));
 							repeatStore.delete(receiver[prop]);
 						}
 					}
@@ -117,10 +115,8 @@ var App = new (function () {
 
 					storeProps = repeatStore.get(receiver);
 
-					if (storeProps) {
-						repeatStore.delete(receiver);
+					if (storeProps)
 						storeProps.forEach(store => store.handler.apply(store.context, store.args));
-					}
 
 					return result;
 				},
@@ -204,18 +200,14 @@ var App = new (function () {
 
 			handler.call(this, elmObj, iterHandle, bindHandle);
 		},
-  
-		FL_BIND: 	0b01,
-		FL_REPEAD: 	0b10,
-		FL_ALL: 	0b11,
 
-		unbind: function(el, flag = this.FL_ALL) {
+		unbind: function(el, onlyBind = false) {
 			const elm = getEl(el);
 			var tmp = null;
 
 			var data = bindEl2data.get(elm);
 
-			if ((flag & this.FL_BIND) && (data) && (data = data.entries().next().value)) {
+			if ((data) && (data = data.entries().next().value)) {
 				data[1].reduce(
 					(stack, prop) => {
 						tmp = data2id.get(stack)[prop].findIndex(itm => itm.el === elm);
@@ -234,16 +226,12 @@ var App = new (function () {
 
 			data = rptEl2data.get(elm); //repeatStore
 
-			if ((flag & this.FL_REPEAD) && (data)) { //[obj, storeObj]
-				for (let idx = 0; idx <= data.length; idx += 2) {
+			if ((!onlyBind) && (data))
+				data.forEach(sobj => repeatStore.get(sobj).delete(elm));
 
-					for (const k in data[idx])
-						document.querySelector(`[__key="${k}"]`).remove();
+			elm.hidden = false;
 
-					tmp = repeatStore.get(data[idx]).findIndex(itm => itm === data[idx + 1]);
-					delete repeatStore.get(data[idx])[tmp];
-				}
-			}
+			Object.values(rptEl2group.get(elm)).forEach(selm => selm.remove());
 		},
 	};
 })();
