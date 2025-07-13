@@ -110,7 +110,7 @@ var App = new (function () {
 
 					let storeProps = data2id.get(receiver);
 					
-					if ((storeProps) && (prop in storeProps))
+					if ((storeProps) && (storeProps[prop]))
 						storeProps[prop].forEach(str => str.el.value = str.handler(str.arg) ?? null);
 
 					storeProps = repeatStore.get(receiver);
