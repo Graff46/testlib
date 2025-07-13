@@ -78,7 +78,8 @@ var App = new (function () {
 				},
 
 				set: function (target, prop, val, receiver) {
-					const cond = (!skeepProxySetFlag) && (val instanceof Object);
+					const cond = (!skeepProxySetFlag) && (val instanceof Object) &&
+					 (receiver[prop] instanceof Object) && receiver[prop][isProxy];
 
 					if (cond) {
 						val = env.buildData(val);
