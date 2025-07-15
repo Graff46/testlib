@@ -5,7 +5,7 @@ var App = new (function () {
 	var parents = Symbol('parents');
 
 	var currentObjProp  = null;
-	var repeatStore    	= new Map();
+	var repeatStore    	= new WeakMap();
 
 	var el2handlerBind 	= new WeakMap();
 	var el2handlerRept 	= new WeakMap();
@@ -69,8 +69,11 @@ var App = new (function () {
 
 		el2handlerRept.delete(elm);
 
-		const group = El2group.get(el);
-		if (group) Object.values(group).forEach(el => _unbind(el, true));
+		const group = El2group.get(elm);
+		if (group) {
+			Object.values(group).forEach(el => el.remove())
+			elm.hidden = false;
+		};
 	}
 
 	var needReadGetterFlag  = false;
