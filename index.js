@@ -1,153 +1,168 @@
 var App = new (function () {
 	var getEl = el => el instanceof Element ? el : document.querySelector(el);
+
 	var isProxy = Symbol('isProxy');
+	var parents = Symbol('parents');
 
-	var data2id        	= new WeakMap();
-	var tempPath       	= new Map();
-	var repeatStore    	= new WeakMap();
+	var currentObjProp  = null;
+	var repeatStore    	= new Map();
 
-	var bindEl2data    	= new WeakMap();
-	var rptEl2data     	= new WeakMap();
-	var rptEl2group     = new WeakMap();
+	var el2handlerBind 	= new WeakMap();
+	var el2handlerRept 	= new WeakMap();
+	var El2group     	= new WeakMap();
 	var el2eventHandler	= new WeakMap();
 
-	function resetTempPath() {
-		tempPath.clear();
-	}
+	var bindReset		= new WeakMap();
+	var bindUpd			= new WeakMap();
 
-	function addBind(el, handler, arg) {
-		tempPath.forEach((prop, obj) => {
-			let propList = data2id.get(obj);
+	function addBind(handler, resHandler, el) {
+		let story = Object.create(null);
+		story.upd = handler;
+		story.res = resHandler;
+		el2handlerBind.set(el, story);
 
-			if (!propList)
-				data2id.set(obj, { [prop]: [] });
-			else if (!(prop in propList))
-				propList[prop] = [];
-
-			data2id.get(obj)[prop].push({el: el, handler: handler, arg: arg});
+		currentObjProp.obj[parents].forEach(obj => {
+			const story = bindReset.get(obj);
+			if (story)
+				story.add(el);
+			else
+				bindReset.set(obj, (new Set()).add(el))
 		});
 
-		resetTempPath();
+		story = bindUpd.get(currentObjProp.obj);
+		if (!story) {
+			story = Object.create(null);
+			story[currentObjProp.prop] = (new Set()).add(el);
+			bindUpd.set(currentObjProp.obj, story);
+		} else {
+			if (story[currentObjProp.prop])
+				story[currentObjProp.prop].add(el);
+			else
+				story[currentObjProp.prop] = (new Set()).add(el);
+		}
 	}
 
-	function addRepeat(handler, context, el, iterHandle, bindHandle, group) {
-		var storeObj = {
-			handler: handler,
-			args: [el, iterHandle, bindHandle, group],
-			context: context,
-		};
+	function addRepeat(handler, el, group) {
+		el2handlerRept.set(el, handler);
+		El2group.set(el, group);
 
-		tempPath.forEach((prop, obj) => {
-			let story = repeatStore.get(obj);
+		const insertHandler = obj => {
+			const story = repeatStore.get(obj);
 
 			if (story)
-				story.set(el, storeObj);
+				story.add(el);
 			else
-				repeatStore.set(obj, (new Map()).set(el, storeObj));			
-		});
+				repeatStore.set(obj, (new Set()).add(el));
+		}
 
-		rptEl2data.set(el, Array.from(tempPath.keys()));
-		rptEl2group.set(el, group);
+		insertHandler(currentObjProp.obj);
+		insertHandler(currentObjProp.obj[currentObjProp.prop]);
+		currentObjProp.obj[parents].forEach(insertHandler);
+	}
 
-		resetTempPath();
+	function _unbind(el, onlyBind = false) {
+		const elm = getEl(el);
+
+		el2handlerBind.delete(elm);
+
+		if (onlyBind) return;
+
+		el2handlerRept.delete(elm);
+
+		const group = El2group.get(el);
+		if (group) Object.values(group).forEach(el => _unbind(el, true));
 	}
 
 	var needReadGetterFlag  = false;
 	var skeepProxySetFlag   = false;
 
+	function buildData (obj, prnt = null, addp = null) {
+		return new Proxy(obj, {
+			parents: new Set(prnt),
+
+			get: function (target, prop, receiver) {
+				if (prop === isProxy) return true;
+				if (prop === parents) return this.parents;
+
+				if (addp)
+					this.parents.add(addp);
+
+				if (needReadGetterFlag | 1) {
+					if ((target[prop] instanceof Object) && (!(target[prop][isProxy]))) {
+						skeepProxySetFlag = true;
+						receiver[prop] = buildData(target[prop], this.parents, receiver);
+						skeepProxySetFlag = false;
+					}
+
+					currentObjProp 		= Object.create(null);
+					currentObjProp.obj 	= receiver;
+					currentObjProp.prop	= prop;
+				}
+
+				return Reflect.get(target, prop, receiver);
+			},
+
+			set: function (target, prop, val, receiver) { 
+				if ((!skeepProxySetFlag) && (val instanceof Object)) {
+					var oldVal = receiver[prop];// new WeakRef ?
+
+					if ((oldVal instanceof Object) && (oldVal[isProxy])) {
+						oldVal = null;
+						val = buildData(val);
+					}
+				}
+
+				const result = Reflect.set(target, prop, val, receiver);
+
+				if (skeepProxySetFlag) return result;
+
+				var storeProps = bindReset.get(receiver);
+				var tmp = null;
+
+				if (storeProps)
+					storeProps.forEach(el => {
+					if (tmp = el2handlerBind.get(el)) tmp.res();
+				});
+
+				if ((storeProps = bindUpd.get(receiver)) && (storeProps = storeProps[prop])) storeProps.forEach(el => {
+					if (tmp = el2handlerBind.get(el)) tmp.upd();
+				});
+
+				if (repeatStore.has(receiver)) {
+					storeProps = new Set(repeatStore.get(receiver));
+					repeatStore.delete(receiver);
+					storeProps.forEach(el => {
+						if (tmp = el2handlerRept.get(el)) tmp();
+					});
+				}
+
+				return result;
+			},
+		});
+	}
+
 	return {
-		buildData: function (obj) {
-			resetTempPath();
-			var env = this;
+		buildData: obj => buildData(obj),
 
-			return new Proxy(obj, {
-				get: function (target, prop, receiver) {
-					if (prop === isProxy) return true;
+		bind: function (elSel, hndl, args = false) {
+			function bindHandler(el, handler, arg = false) {
+				const elm = getEl(el);
 
-					if (needReadGetterFlag) {
-						if ((target[prop] instanceof Object) && (!(target[prop][isProxy]))) {
-							skeepProxySetFlag = true;
-							receiver[prop] = env.buildData(target[prop]);
-							skeepProxySetFlag = false;
-						}
+				needReadGetterFlag = true;
+				elm.value = handler(arg) ?? null;
+				needReadGetterFlag = false;
 
-						tempPath.set(receiver, prop);
-					}
+				addBind(() => elm.value = handler(arg) ?? null, () => bindHandler(el, handler, arg), elm);
 
-					return Reflect.get(target, prop, receiver);
-				},
+				var src = Object.assign(Object.create(null), currentObjProp);
 
-				set: function (target, prop, val, receiver) {
-					const cond = (!skeepProxySetFlag) && (val instanceof Object) &&
-					 (receiver[prop] instanceof Object) && receiver[prop][isProxy];
-
-					if (cond) {
-						val = env.buildData(val);
-
-						var prp = Object.create(null);
-
-						var bindStory = data2id.get(receiver[prop]);
-						const rpStory = repeatStore.get(receiver[prop]);
-
-						if (bindStory) {
-							for (const k in target[prop]) {
-								if (k in val) prp[k] = bindStory[k];
-							}
-						}
-
-						data2id.set(val, prp);
-						data2id.delete(receiver[prop]);
-
-						if (rpStory) {
-							repeatStore.set(val, rpStory);
-							rpStory.forEach(el => rptEl2data.get(el).forEach((sobj, i, arr) => sobj === receiver[prop] ? arr[i] = val : null));
-							repeatStore.delete(receiver[prop]);
-						}
-					}
-
-					const result = Reflect.set(target, prop, val, receiver);
-
-					if (skeepProxySetFlag) return result;
-
-					let storeProps = data2id.get(receiver);
-					
-					if ((storeProps) && (storeProps[prop]))
-						storeProps[prop].forEach(str => str.el.value = str.handler(str.arg) ?? null);
-
-					storeProps = repeatStore.get(receiver);
-
-					if (storeProps)
-						storeProps.forEach(store => store.handler.apply(store.context, store.args));
-
-					return result;
-				},
-			});
-		},
-
-		bind: function (el, handler, arg = false) {
-			const elm = getEl(el);
-
-			needReadGetterFlag = true;
-			elm.value = handler(arg) ?? null;
-			needReadGetterFlag = false;
-
-			const propPath = Array.from(tempPath.values());
-			const rootObj = tempPath.keys().next().value;
-
-			bindEl2data.set(elm, (new Map()).set(rootObj, propPath));
-
-			addBind(elm, handler, arg);
-
-			function eventHandler(event) {
-				propPath.reduce(
-					(stack, prop, i) => ++i === propPath.length ? stack[prop] = event.currentTarget.value : stack[prop],
-					rootObj
-				);
+				const eventHandler = event => src.obj[src.prop] = event.currentTarget.value ?? null;
+				elm.removeEventListener('change', el2eventHandler.get(elm));
+				el2eventHandler.set(elm, eventHandler);
+				elm.addEventListener('change', eventHandler);
 			}
 
-			el2eventHandler.set(elm, eventHandler);
-
-			elm.addEventListener('change', eventHandler);
+			return bindHandler(elSel, hndl, args);
 		},
 
 		repeat: function (el, iterHandle, bindHandle) {
@@ -160,7 +175,7 @@ var App = new (function () {
 
 				var group = Object.create(null);
 
-				addRepeat(handler, this, elm, iterHandle, bindHandle, group);
+				addRepeat(() => handler.call(this, elm, iterHndle, bindHndle, group), elm, group);
 
 				if (updGroup) {
 					for (const k in updGroup) {
@@ -199,40 +214,9 @@ var App = new (function () {
 				keys = null;
 			}
 
-			handler.call(this, elmObj, iterHandle, bindHandle);
+			return handler.call(this, elmObj, iterHandle, bindHandle);
 		},
 
-		unbind: function(el, onlyBind = false) {
-			const elm = getEl(el);
-			var tmp = null;
-
-			var data = bindEl2data.get(elm);
-
-			if ((data) && (data = data.entries().next().value)) {
-				data[1].reduce(
-					(stack, prop) => {
-						tmp = data2id.get(stack)[prop].findIndex(itm => itm.el === elm);
-						delete data2id.get(stack)[prop][tmp];
-
-						return stack[prop];
-					},
-					data[0],
-				);
-
-				elm.removeEventListener('change', el2eventHandler.get(elm));
-
-				bindEl2data.delete(elm);
-				el2eventHandler.delete(elm);
-			}
-
-			data = rptEl2data.get(elm); //repeatStore
-
-			if ((!onlyBind) && (data))
-				data.forEach(sobj => repeatStore.get(sobj).delete(elm));
-
-			elm.hidden = false;
-
-			Object.values(rptEl2group.get(elm)).forEach(selm => selm.remove());
-		},
+		unbind: _unbind,
 	};
 })();
