@@ -87,13 +87,13 @@ var App = new (function () {
 				if (addp)
 					this.parents.add(addp);
 
-				if (needReadGetterFlag | 1) {
-					if ((target[prop] instanceof Object) && (!(target[prop][isProxy]))) {
-						skeepProxySetFlag = true;
-						receiver[prop] = buildData(target[prop], this.parents, receiver);
-						skeepProxySetFlag = false;
-					}
+				if ((target[prop] instanceof Object) && (!(target[prop][isProxy]))) {
+					skeepProxySetFlag = true;
+					receiver[prop] = buildData(target[prop], this.parents, receiver);
+					skeepProxySetFlag = false;
+				}
 
+				if (needReadGetterFlag) {
 					currentObjProp 		= Object.create(null);
 					currentObjProp.obj 	= receiver;
 					currentObjProp.prop	= prop;
