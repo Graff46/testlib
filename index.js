@@ -1,6 +1,7 @@
 var App = new (function () {
 	var getEl = el => el instanceof Element ? el : document.querySelector(el);
 	var isProxy = Symbol('isProxy');
+	var mask = Symbol('mask');
 
 	var data2id        	= new WeakMap();
 	var tempPath       	= new Map();
@@ -11,12 +12,23 @@ var App = new (function () {
 	var rptEl2group     = new WeakMap();
 	var el2eventHandler	= new WeakMap();
 
+	var msk2id        	= Object.create(null);
+
 	function resetTempPath() {
-		tempPath.clear();
+		//tempPath.clear();
 	}
 
 	function addBind(el, handler, arg) {
-		tempPath.forEach((prop, obj) => {
+		//console.log(tempPath);
+
+		var tmp = tempPath[0];
+
+		while (tmp != 0) {
+			msk2id[tmp] = {el: el, handler: handler, arg: arg}
+			tmp >>= 1;
+		} 
+
+		/*tempPath.forEach((prop, obj) => {
 			let propList = data2id.get(obj);
 
 			if (!propList)
@@ -25,7 +37,7 @@ var App = new (function () {
 				propList[prop] = [];
 
 			data2id.get(obj)[prop].push({el: el, handler: handler, arg: arg});
-		});
+		});*/
 
 		resetTempPath();
 	}
@@ -56,22 +68,31 @@ var App = new (function () {
 	var skeepProxySetFlag   = false;
 
 	return {
-		buildData: function (obj) {
+		buildData: function (obj, msk = [1, null]) {
 			resetTempPath();
 			var env = this;
 
 			return new Proxy(obj, {
+				props: new Set(),
+				mask: Array.from(msk),
+
 				get: function (target, prop, receiver) {
 					if (prop === isProxy) return true;
+					if (prop === mask) return this.mask;
 
-					if (needReadGetterFlag) {
+					if (needReadGetterFlag || 1) {
 						if ((target[prop] instanceof Object) && (!(target[prop][isProxy]))) {
 							skeepProxySetFlag = true;
-							receiver[prop] = env.buildData(target[prop]);
+
+							this.mask[0] <<= this.props.size;
+							
+							receiver[prop] = env.buildData(target[prop], [((this.mask[0] << 1) | 1), prop]);
+							this.props.add(prop);
+
 							skeepProxySetFlag = false;
 						}
 
-						tempPath.set(receiver, prop);
+						tempPath = this.mask;
 					}
 
 					return Reflect.get(target, prop, receiver);
@@ -82,7 +103,9 @@ var App = new (function () {
 					 (receiver[prop] instanceof Object) && receiver[prop][isProxy];
 
 					if (cond) {
-						val = env.buildData(val);
+						this.mask[0] <<= this.props.size;
+						val = env.buildData(val, [((this.mask[0] << 1) | 1), prop]);
+						this.props.add(prop);
 
 						var prp = Object.create(null);
 
@@ -131,8 +154,8 @@ var App = new (function () {
 			elm.value = handler(arg) ?? null;
 			needReadGetterFlag = false;
 
-			const propPath = Array.from(tempPath.values());
-			const rootObj = tempPath.keys().next().value;
+			const propPath = []//Array.from(tempPath.values());
+			const rootObj = []//tempPath.keys().next().value;
 
 			bindEl2data.set(elm, (new Map()).set(rootObj, propPath));
 
