@@ -1,12 +1,29 @@
-const obj = { key: { k2: 'test', k3: 56 }, one: 0, };
+const obj = {
+    a: {                         //a-1-1
+        b: {                     //b-3-11
+            c: {d: 1, d2: 2,}    //c-7-111 { d-15-1111 }
+        }, 
+    },
+
+    aa: {
+        bb: {
+            cc: {dd: 22,}
+        }
+    }, 
+    
+};
 
 const appData = App.buildData(obj);
 
-App.bind('.i1', x => appData.key.k2);
+const y = appData.a;
+const yy = appData.aa.bb;
 
-App.repeat('.i2', x => appData.key, k => appData.key[k]);
+//App.bind('.i3', x => y.k1.l1.m1);
+App.bind('.i1', x => y.b.c.d);
+
+//App.repeat('.i2', x => y.k1.l1, k => y.k1.l1[k]);
 var tt;
-setTimeout(() => {appData.key = { k2: 1, k3: 2, k4: 3 }; tt = appData.key}, 2000);
-setTimeout(() => {tt.k2 = 4; App.bind('.i3', x => appData.key.k3);}, 4000);
-setTimeout(() => {appData.key = { k2: 6, k4: 8, k9: 99 }; App.unbind('.i2')}, 4500);
-setTimeout(() => appData.key.k2 = 5, 6000);
+//setTimeout(() => { y.k1 = {l1:{ m1: 55 }}; }, 2000);
+//setTimeout(() => { y.b.c.d = 3; /*App.bind('.i3', x => yy.cc.dd)*/;}, 2000);
+setTimeout(() => { y.b.c = {d: 4, d2: 5, d3: 6 }; /*App.unbind('.i2')*/}, 3000);
+//setTimeout(() => y.b.c = {d : 7}, 4000);
