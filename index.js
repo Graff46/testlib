@@ -102,26 +102,23 @@ var App = new (function () {
 			num >>= 1; // сдвигаем вправо на 1 бит
 		} while (num !== 0);
 
-		maxDeep = Math.max(length, maxDeep);
+		maxDeep = Math.max(length);
 
 		return new Proxy(obj, {
 			mask: code,
-			maxMask: code,
 			props: new Set(),
 
 			get: function (target, prop, receiver) {
 				if (prop === isProxy)	return true;
 				if (prop === mask)		return this.mask;
-				if (prop === max)		return this.maxMask;
 
 				if ((target[prop] instanceof Object) && (!(target[prop][isProxy]))) {
 					skeepProxySetFlag = true;
 
 					this.props.add(prop);
 					this.mask <<= this.props.size - 1;
-					this.maxMask = Math.max(this.maxMask, ((this.mask << 1) | 1) );
 
-					receiver[prop] = buildData(target[prop], this.maxMask, prop);
+					receiver[prop] = buildData(target[prop]);
 					skeepProxySetFlag = false;
 				}
 
