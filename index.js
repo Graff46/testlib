@@ -3,19 +3,43 @@ var App = new (function () {
 
 	var isProxy = Symbol('isProxy');
 	var mask 	= Symbol('mask');
+	var max 	= Symbol('max');
 
 	var currentObjProp  = null;
-	var repeatStore    	= new WeakMap();
 
 	var el2handlerBind 	= new WeakMap();
 	var el2handlerRept 	= new WeakMap();
 	var El2group     	= new WeakMap();
 	var el2eventHandler	= new WeakMap();
 
+	var repeatStore    	= Object.create(null);
 	var bindReset		= Object.create(null);
 	var bindUpd			= Object.create(null);
 
 	var maxDeep			= 1;
+
+	function _eachBit(code, collector, el) {
+		function insert(bcode) {
+			if (story = collector[bcode])
+				story.push(el);
+			else
+				collector[bcode] = [el];
+		}
+
+		var nullCnt = 0;
+		while(code !== 1) {
+			code >>= 1;
+			if (code % 2) {
+				if ((code === 1) && (nullCnt))
+					insert(code << nullCnt);
+				else
+					insert(code);
+
+				nullCnt = 0;
+			} else
+				nullCnt++;
+		}
+	}
 
 	function addBind(handler, resHandler, el) {
 		let story = Object.create(null);
@@ -24,39 +48,31 @@ var App = new (function () {
 
 		el2handlerBind.set(el, story);
 
-		if ((story = bindUpd[currentObjProp.obj[mask].code])) {
-			if (story = story[currentObjProp.prop])
-				story.push(handler);
+		var code = currentObjProp.obj[mask];
+
+		if ((story = bindUpd[code])) {
+			if (story[currentObjProp.prop])
+				story[currentObjProp.prop].push(el);
 			else
-				story[currentObjProp.prop] = [handler];
+				story[currentObjProp.prop] = [el];
 		} else {
 			story = Object.create(null);
-			story[currentObjProp.prop] = [handler];
-			bindUpd[currentObjProp.obj[mask].code] = story;
+			story[currentObjProp.prop] = [el];
+			bindUpd[code] = story;
 		}
 
-		if (story = bindReset[currentObjProp.obj[mask].code])
-			story.add(resHandler);
-		else
-			bindReset[currentObjProp.obj[mask].code] = (new Set()).add(resHandler);
+		return _eachBit(code, bindReset, el);
 	}
 
 	function addRepeat(handler, el, group) {
 		el2handlerRept.set(el, handler);
 		El2group.set(el, group);
 
-		const insertHandler = obj => {
-			const story = repeatStore.get(obj);
-
-			if (story)
-				story.add(el);
-			else
-				repeatStore.set(obj, (new Set()).add(el));
-		}
-
-		insertHandler(currentObjProp.obj);
-		insertHandler(currentObjProp.obj[currentObjProp.prop]);
-		currentObjProp.obj[parents].forEach(insertHandler);
+		return _eachBit(
+			currentObjProp.obj[currentObjProp.prop][mask],
+			repeatStore,
+			el
+		);
 	}
 
 	function _unbind(el, onlyBind = false) {
@@ -78,9 +94,9 @@ var App = new (function () {
 	var needReadGetterFlag  = false;
 	var skeepProxySetFlag   = false;
 
-	function buildData (obj, msk = {code: 1, prop: null}) {
+	function buildData (obj, code = 1) {
 		let length = 0;
-		let num = msk.code;
+		let num = code;
 		do {
 			length++;
 			num >>= 1; // сдвигаем вправо на 1 бит
@@ -89,16 +105,23 @@ var App = new (function () {
 		maxDeep = Math.max(length, maxDeep);
 
 		return new Proxy(obj, {
-			mask: Object.assign(Object.create(null), msk),
+			mask: code,
+			maxMask: code,
+			props: new Set(),
 
 			get: function (target, prop, receiver) {
-				if (prop === isProxy) return true;
-				if (prop === mask) return this.mask;
+				if (prop === isProxy)	return true;
+				if (prop === mask)		return this.mask;
+				if (prop === max)		return this.maxMask;
 
 				if ((target[prop] instanceof Object) && (!(target[prop][isProxy]))) {
 					skeepProxySetFlag = true;
 
-					receiver[prop] = buildData(target[prop], {code: ((this.mask.code << 1) | 1), prop: prop});
+					this.props.add(prop);
+					this.mask <<= this.props.size - 1;
+					this.maxMask = Math.max(this.maxMask, ((this.mask << 1) | 1) );
+
+					receiver[prop] = buildData(target[prop], this.maxMask, prop);
 					skeepProxySetFlag = false;
 				}
 
@@ -112,48 +135,50 @@ var App = new (function () {
 			},
 
 			set: function (target, prop, val, receiver) {
-				var storeProps = null;
+				var storebinds 		= null;
+				var storeRepeats	= null;
 
 				if ((!skeepProxySetFlag) && (val instanceof Object)) {
-					var oldVal = receiver[prop];// new WeakRef ?
+					var oldVal = receiver[prop];
 
 					if ((oldVal instanceof Object) && (oldVal[isProxy])) {
 						oldVal = null;
-						val = buildData(val, {code: ((this.mask.code << 1) | 1), prop: prop});
-					}
-
-					var code = receiver[mask].code;
-					while (code < (2 ** maxDeep)) {
-						code = code << 1 | 1;
 						
-						if (bindReset[code]) storeProps = new Set(bindReset[code]);
+						val = buildData(val, ((this.mask << 1) | 1));
 					}
-				}
 
+					var code = receiver[mask];
+					if (bindReset[code]) {
+						storebinds = Array.from(bindReset[code]);
+						bindReset[code] = [];
+					};
+
+					if (repeatStore[code]) {
+						storeRepeats = Array.from(repeatStore[code]);
+						repeatStore[code] = [];
+					}
+					
+				}
 				const result = Reflect.set(target, prop, val, receiver);
 
 				if (skeepProxySetFlag) return result;
 
-				if (storeProps) storeProps.forEach(h => h());
+				if (storebinds) storebinds.forEach(el => {
+					if (el2handlerBind.has(el))
+						el2handlerBind.get(el).res();
+				});
 
-				/*var storeProps = bindReset.get(receiver);
-				var tmp = null;
+				if (storeRepeats) storeRepeats.forEach(el => {
+					if (el2handlerRept.has(el))
+						el2handlerRept.get(el)();
+				});
 
-				if (storeProps)
-					storeProps.forEach(el => {
-					if (tmp = el2handlerBind.get(el)) tmp.res();
-				});*/
-
-				//if ((storeProps = bindUpd[receiver]) && (storeProps = storeProps[prop])) 
-				//	storeProps.forEach((h, i) => i % 2 ? null : h());
-
-				/*if (repeatStore.has(receiver)) {
-					storeProps = new Set(repeatStore.get(receiver));
-					repeatStore.delete(receiver);
-					storeProps.forEach(el => {
-						if (tmp = el2handlerRept.get(el)) tmp();
+				if ((storebinds = bindUpd[receiver[mask]]) && (storebinds = storebinds[prop])) {
+					storebinds.forEach(el => {
+						if (el2handlerBind.has(el))
+							el2handlerBind.get(el).upd();
 					});
-				}*/
+				}
 
 				return result;
 			},
@@ -226,10 +251,8 @@ var App = new (function () {
 
 				keys.forEach(key => {
 					group[key] = document.querySelector(`[__key="${key}"]`);
-
 					if (bindHandle) this.bind(group[key], bindHndle, key);
 				});
-
 				keys = null;
 			}
 

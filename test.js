@@ -9,21 +9,21 @@ const obj = {
         bb: {
             cc: {dd: 22,}
         }
-    }, 
-    
+    },
 };
 
 const appData = App.buildData(obj);
 
 const y = appData.a;
-const yy = appData.aa.bb;
+const yy = appData.aa;
 
-//App.bind('.i3', x => y.k1.l1.m1);
+App.bind('.i3', x => yy.bb.cc.dd);
 App.bind('.i1', x => y.b.c.d);
 
-//App.repeat('.i2', x => y.k1.l1, k => y.k1.l1[k]);
+App.repeat('.i2', x => y.b.c, k => y.b.c[k]);
 var tt;
-//setTimeout(() => { y.k1 = {l1:{ m1: 55 }}; }, 2000);
-//setTimeout(() => { y.b.c.d = 3; /*App.bind('.i3', x => yy.cc.dd)*/;}, 2000);
-setTimeout(() => { y.b.c = {d: 4, d2: 5, d3: 6 }; /*App.unbind('.i2')*/}, 3000);
-//setTimeout(() => y.b.c = {d : 7}, 4000);
+setTimeout(() => { y.b = {c: { d: 55 }}; }, 2000);
+setTimeout(() => { y.b.c.d = 3; /*App.bind('.i3', x => yy.bb.cc.dd)*/;}, 3000);
+setTimeout(() => { y.b.c = {d: 4, d2: 5, d3: 6 }; App.unbind('.i2')}, 4000);
+setTimeout(() => { yy.bb = {cc: {dd: 44, dd2: 5, dd3: 6 }}; App.unbind('.l3')}, 5000);
+setTimeout(() => yy.bb = {cc: {dd : 7}}, 6000);
