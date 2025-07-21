@@ -2,7 +2,6 @@ var App = new (function () {
 	var getEl = el => el instanceof Element ? el : document.querySelector(el);
 
 	var isProxy = Symbol('isProxy');
-	var parents = Symbol('parents');
 
 	var currentObjProp  = null;
 	var repeatStore    	= new WeakMap();
@@ -15,13 +14,16 @@ var App = new (function () {
 	var bindReset		= new WeakMap();
 	var bindUpd			= new WeakMap();
 
+	var parents			= new WeakMap();
+	var obj2prox		= new WeakMap();
+
 	function addBind(handler, resHandler, el) {
 		let story = Object.create(null);
 		story.upd = handler;
 		story.res = resHandler;
 		el2handlerBind.set(el, story);
 
-		currentObjProp.obj[parents].forEach(obj => {
+		parents.get(currentObjProp.obj).forEach(obj => {
 			const story = bindReset.get(obj);
 			if (story)
 				story.add(el);
@@ -55,9 +57,8 @@ var App = new (function () {
 				repeatStore.set(obj, (new Set()).add(el));
 		}
 
-		insertHandler(currentObjProp.obj);
 		insertHandler(currentObjProp.obj[currentObjProp.prop]);
-		currentObjProp.obj[parents].forEach(insertHandler);
+		parents.get(currentObjProp.obj).forEach(insertHandler);
 	}
 
 	function _unbind(el, onlyBind = false) {
@@ -79,22 +80,22 @@ var App = new (function () {
 	var needReadGetterFlag  = false;
 	var skeepProxySetFlag   = false;
 
-	function buildData (obj, prnt = null, addp = null) {
+	function buildData (obj, prnt = null) {
 		return new Proxy(obj, {
-			parents: new Set(prnt),
-
 			get: function (target, prop, receiver) {
 				if (prop === isProxy) return true;
-				if (prop === parents) return this.parents;
 
-				if (addp)
-					this.parents.add(addp);
+				if (target[prop] instanceof Object) {
+					if (!(target[prop][isProxy])) {
+						skeepProxySetFlag = true;
+						receiver[prop] = buildData(target[prop], receiver);
+						skeepProxySetFlag = false;
+					} 
+				} else if (!(obj2prox.has(target)))
+					obj2prox.set(target, receiver);
 
-				if ((target[prop] instanceof Object) && (!(target[prop][isProxy]))) {
-					skeepProxySetFlag = true;
-					receiver[prop] = buildData(target[prop], this.parents, receiver);
-					skeepProxySetFlag = false;
-				}
+				if (prnt)
+					parents.set(receiver, (new Set(parents.get(prnt) )).add(prnt));
 
 				if (needReadGetterFlag) {
 					currentObjProp 		= Object.create(null);
@@ -111,7 +112,7 @@ var App = new (function () {
 
 					if ((oldVal instanceof Object) && (oldVal[isProxy])) {
 						oldVal = null;
-						val = buildData(val);
+						val = buildData(val, target);
 					}
 				}
 
@@ -141,11 +142,35 @@ var App = new (function () {
 
 				return result;
 			},
+
+			deleteProperty: function(target, prop) {
+				var obj = null;
+				var store = null;
+
+				if (target[prop] instanceof Object) {
+					if (target[prop][isProxy]) {
+						if (obj = parents.get(target[prop]))
+							obj = obj[prop];
+					}
+				} else
+					obj = obj2prox.get(target);
+
+				if (store = repeatStore.get(obj))
+					store.forEach(el => _unbind(el));
+
+				if (store = bindReset.get(obj))
+					store.forEach(el => _unbind(el, true));
+				
+				if ((store = bindUpd.get(obj)) && (store = store[prop]))
+					store.forEach(el => _unbind(el, true));
+				
+				return Reflect.deleteProperty(target, prop);
+			},
 		});
 	}
 
 	return {
-		buildData: obj => buildData(obj),
+		buildData: obj => buildData(obj, obj),
 
 		bind: function (elSel, hndl, args = false) {
 			function bindHandler(el, handler, arg = false) {
