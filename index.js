@@ -160,14 +160,14 @@ var App = new (function () {
 
 				if (skeepProxySetFlag) return result;
 
-				if (storebinds) storebinds.forEach(el => {
-					if (el2handlerBind.has(el))
-						el2handlerBind.get(el).res();
-				});
-
 				if (storeRepeats) storeRepeats.forEach(el => {
 					if (el2handlerRept.has(el))
 						el2handlerRept.get(el)();
+				});
+
+				if (storebinds) storebinds.forEach(el => {
+					if (el2handlerBind.has(el))
+						el2handlerBind.get(el).res();
 				});
 
 				if ((storebinds = bindUpd[receiver[mask]]) && (storebinds = storebinds[prop])) {
@@ -178,6 +178,32 @@ var App = new (function () {
 				}
 
 				return result;
+			},
+
+			deleteProperty: function(target, prop) {
+				var obj = null;
+				var store = null;
+
+				if (target[prop] instanceof Object) {
+					if (target[prop][isProxy]) {
+						if (obj = parents.get(target[prop]))
+							obj = obj[prop];
+					}
+				} else
+					obj = obj2prox.get(target);
+
+				var code = obj[mask];
+
+				if (store = repeatStore[code])
+					store.forEach(el => _unbind(el));
+
+				if (store = bindReset[code])
+					store.forEach(el => _unbind(el, true));
+				
+				if ((store = bindUpd[code]) && (store = store[prop]))
+					store.forEach(el => _unbind(el, true));
+				
+				return Reflect.deleteProperty(target, prop);
 			},
 		});
 	}
