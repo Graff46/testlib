@@ -57,8 +57,7 @@ var App = new (function () {
 				repeatStore.set(obj, (new Set()).add(el));
 		}
 
-		insertHandler(currentObjProp.obj[currentObjProp.prop]);
-		parents.get(currentObjProp.obj).forEach(insertHandler);
+		parents.get(currentObjProp.obj[currentObjProp.prop]).forEach(insertHandler);
 	}
 
 	function _unbind(el, onlyBind = false) {
@@ -149,8 +148,8 @@ var App = new (function () {
 
 				if (target[prop] instanceof Object) {
 					if (target[prop][isProxy]) {
-						if (obj = parents.get(target[prop]))
-							obj = obj[prop];
+						if (obj = parents.get(target[prop])) 
+							obj = obj.keys().next().value;
 					}
 				} else
 					obj = obj2prox.get(target);
