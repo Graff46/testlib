@@ -20,7 +20,7 @@ const y = appData.key;
 const yy = appData.one.k2;
 
 App.bind('.i3', x => y.k1.l1.m1);
-App.bind('.i1', x => y.k1.l1.m1);
+App.xrBind('.i1', el => el.value = y.k1.l1.m1, e => y.k1.l1.m1 = e.currentTarget.value);
 
 App.repeat('.i2', x => y.k1.l1, k => y.k1.l1[k]);
 var tt;

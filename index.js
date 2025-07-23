@@ -21,6 +21,7 @@ var App = new (function () {
 		let story = Object.create(null);
 		story.upd = handler;
 		story.res = resHandler;
+
 		el2handlerBind.set(el, story);
 
 		parents.get(currentObjProp.obj).forEach(obj => {
@@ -171,25 +172,36 @@ var App = new (function () {
 	return {
 		buildData: obj => buildData(obj, obj),
 
-		bind: function (elSel, hndl, args = false) {
-			function bindHandler(el, handler, arg = false) {
-				const elm = getEl(el);
+		bind: function (elSel, hndl, _args = false) {
+			var src = {};
 
-				needReadGetterFlag = true;
-				elm.value = handler(arg) ?? null;
-				needReadGetterFlag = false;
-
-				addBind(() => elm.value = handler(arg) ?? null, () => bindHandler(el, handler, arg), elm);
-
-				var src = Object.assign(Object.create(null), currentObjProp);
-
-				const eventHandler = event => src.obj[src.prop] = event.currentTarget.value ?? null;
-				elm.removeEventListener('change', el2eventHandler.get(elm));
-				el2eventHandler.set(elm, eventHandler);
-				elm.addEventListener('change', eventHandler);
+			function callback (e) {
+				console.log(e, src);
+				
+				src.obj[src.prop] = e.currentTarget.value;
 			}
 
-			return bindHandler(elSel, hndl, args);
+			function handler(el, key) {
+				el.value = hndl(key);
+				Object.assign(src, currentObjProp);
+			}
+
+			this.xrBind(elSel, handler, callback, _args, true);
+		},
+
+		xrBind(el, handler, callback, _arg) {
+			const elm = getEl(el);
+			needReadGetterFlag = true;
+			handler(elm, _arg);
+			needReadGetterFlag = false;
+
+			addBind(handler.bind(this, elm, _arg), this.xrBind.bind(this, elm, handler, callback, _arg), elm, _arg);
+
+			if (el2eventHandler.has(elm))
+				elm.removeEventListener('change', el2eventHandler.get(elm));
+
+			el2eventHandler.set(elm, callback);
+			elm.addEventListener('change', callback);
 		},
 
 		repeat: function (el, iterHandle, bindHandle) {
