@@ -26,7 +26,7 @@ var App = new (function () {
 		let story = Object.create(null);
 		story.upd = handler;
 		story.res = resHandler;
-		
+
 		el2handlerBind.set(el, story);
 
 		parents.get(currentObjProp.obj).forEach(function (obj) {
@@ -56,7 +56,6 @@ var App = new (function () {
 
 		const insertHandler = function (obj) {
 			const story = repeatStore.get(obj);
-
 			if (story)
 				story.add(el);
 			else
@@ -67,7 +66,7 @@ var App = new (function () {
 		parents.get(currentObjProp.obj[currentObjProp.prop]).forEach(insertHandler);
 	}
 
-	function _unbind(el, onlyBind = false) {
+	function _unbind(el, onlyBind) {
 		const elm = getEl(el);
 
 		el2handlerBind.delete(elm);
@@ -88,7 +87,7 @@ var App = new (function () {
 	var needReadGetterFlag  = false;
 	var skeepProxySetFlag   = false;
 
-	function buildData (obj, prnt = null) {
+	function buildData (obj, prnt) {
 		return new Proxy(obj, {
 			get: function (target, prop, receiver) {
 				if (prop === isProxy) return true;
@@ -157,14 +156,11 @@ var App = new (function () {
 				} else
 					obj = obj2prox.get(target);
 
-				if (store = repeatStore.get(obj))
-					store.forEach(function (el) {_unbind(el)});
+				if (store = repeatStore.get(obj)) store.forEach(function (el) {_unbind(el)});
 
-				if (store = bindReset.get(obj))
-					store.forEach(function (el) {_unbind(el, true)});
+				if (store = bindReset.get(obj)) store.forEach(function (el) {_unbind(el, true)});
 				
-				if ((store = bindUpd.get(obj)) && (store = store[prop]))
-					store.forEach(function (el) {_unbind(el, true)});
+				if ((store = bindUpd.get(obj)) && (store = store[prop])) store.forEach(function (el) {_unbind(el, true)});
 				
 				return Reflect.deleteProperty(target, prop);
 			},
@@ -177,8 +173,8 @@ var App = new (function () {
 		},
 
 		bind: function (elSel, hndl, args = false) {
-			function callback(val, el, src) {
-				return src.obj[src.prop] = val;
+			function callback(el, _, src) {
+				return src.obj[src.prop] = el.value;
 			};
 
 			function handler(el) {
@@ -188,51 +184,49 @@ var App = new (function () {
 			return this.xrBind(elSel, handler, callback, true);
 		},
 
-		xrBind: function (el, handler, callback, __needCurrObj = false) {
+		xrBind: function (el, handler, callback, __needCurrObj, rptKey) {
 			const elm = getEl(el);
 
 			needReadGetterFlag = true;
-			handler(elm);
+			handler(elm, rptKey);
 			needReadGetterFlag = false;
 
 			var cObjProp = null;
 			if (__needCurrObj)
 				cObjProp = Object.assign(Object.create(null), currentObjProp);
 
-			addBind(handler.bind(this, elm), this.xrBind.bind(this, el, handler, callback, __needCurrObj), elm);
+			addBind(handler.bind(this, elm), this.xrBind.bind(this, el, handler, callback, __needCurrObj, rptKey), elm);
 
 			const eventHandler = function (event) {
-				return callback(event.currentTarget.value, event.currentTarget, cObjProp);
+				return callback(event.currentTarget, cObjProp | rptKey);
 			};
 			elm.removeEventListener('change', el2eventHandler.get(elm));
 			el2eventHandler.set(elm, eventHandler);
 			elm.addEventListener('change', eventHandler);
 		},
 
-		repeat: function (el, iterHandle, bindHandle) {
+		repeat: function (el, iterHandle, bindHandle, xrBindCallback) {
 			var elmObj = getEl(el);
 
-			function handler(elm, iterHndle, bindHndle, updGroup = null) {
+			function handler(elm, iterHndle, bindHndle, bindCallback, updGroup = null) {
 				needReadGetterFlag = true;
 				var iter = iterHndle();
 				needReadGetterFlag = false;
 
 				var group = Object.create(null);
 
-				addRepeat(handler.bind(this, elm, iterHndle, bindHndle, group), elm, group);
+				addRepeat(handler.bind(this, elm, iterHndle, bindHndle, bindCallback, group), elm, group);
 
 				if (updGroup) {
 					for (const k in updGroup) {
-						if (!(k in iter))
-							updGroup[k].remove();
+						if (iter[k])
+							group[k] = updGroup[k];
 						else
-							group[k] = document.querySelector(`[__key="${k}"]`);
+							updGroup[k].remove();
 					}
 				}
-
-				var elHTML = String();
 				var newEl = null
-				var keys = [];
+				var fragment = new DocumentFragment();
 
 				for (const key in iter) {
 					if ((!updGroup) || (!(key in updGroup))) {
@@ -240,25 +234,21 @@ var App = new (function () {
 						newEl.hidden = false;
 						newEl.setAttribute('__key', key);
 
-						elHTML = elHTML.concat(newEl.outerHTML);
+						group[key] = newEl;
 
-						keys.push(key);
+						if (bindCallback)
+							this.xrBind(newEl, bindHandle, bindCallback, false, key);
+						else if (bindHandle)
+							this.bind(newEl, bindHndle, key);
+
+						fragment.append(newEl);
 					}
 				}
 
 				elm.hidden = true;
-				elm.insertAdjacentHTML('afterEnd', elHTML);
-
-				keys.forEach( function (key) {
-					group[key] = document.querySelector(`[__key="${key}"]`);
-
-					if (bindHandle) this.bind(group[key], bindHndle, key);
-				}, this);
-
-				keys = null;
+				elm.after(fragment);
 			}
-
-			return handler.call(this, elmObj, iterHandle, bindHandle);
+			return handler.call(this, elmObj, iterHandle, bindHandle, xrBindCallback);
 		},
 
 		unbind: _unbind,
