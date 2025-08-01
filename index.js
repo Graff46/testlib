@@ -1,4 +1,4 @@
-var App = new (function () {
+var App = (() => {
 	var getEl = el => el instanceof Element ? el : document.querySelector(el);
 
 	var isProxy = Symbol('isProxy');
@@ -77,9 +77,9 @@ var App = new (function () {
 
 		el2handlerBind.delete(elm);
 
-		if (onlyBind) return;
-
 		el.value = null;
+
+		if (onlyBind) return;
 
 		el2handlerRept.delete(elm);
 
@@ -157,22 +157,12 @@ var App = new (function () {
 
 				if (skeepProxySetFlag) return result;
 
-				if (storeRepeats) storeRepeats.forEach(function (el) {
-					if (el2handlerRept.has(el))
-						el2handlerRept.get(el)();
-				});
+				if (storeRepeats) storeRepeats.forEach(el => {if (el2handlerRept.has(el)) el2handlerRept.get(el)();});
 
-				if (storebinds) storebinds.forEach(function (el) {
-					if (el2handlerBind.has(el))
-						el2handlerBind.get(el).res();
-				});
+				if (storebinds) storebinds.forEach(el => {if (el2handlerBind.has(el)) el2handlerBind.get(el).res();});
 
-				if ((storebinds = bindUpd[receiver[mask]]) && (storebinds = storebinds[prop])) {
-					storebinds.forEach(function (el) {
-						if (el2handlerBind.has(el))
-							el2handlerBind.get(el).upd();
-					});
-				}
+				if ((storebinds = bindUpd[receiver[mask]]) && (storebinds = storebinds[prop]))
+					storebinds.forEach(el => {if (el2handlerBind.has(el)) el2handlerBind.get(el).upd();});
 
 				return result;
 			},
@@ -205,7 +195,7 @@ var App = new (function () {
 		});
 	}
 
-	var out = {
+	var extInterface = {
 		buildData: obj => buildData(obj),
 
 		bind: (elSel, hndl, args = false) => {
@@ -213,7 +203,7 @@ var App = new (function () {
 
 			const handler = el => el.value = hndl(args);
 
-			return out.xrBind(elSel, handler, callback, true);
+			return extInterface.xrBind(elSel, handler, callback, true);
 		},
 
 		xrBind: (el, handler, callback, __needCurrObj, rptKey) => {
@@ -227,7 +217,7 @@ var App = new (function () {
 			if (__needCurrObj)
 				cObjProp = Object.assign(Object.create(null), currentObjProp);
 
-			addBind(handler.bind(out, elm), out.xrBind.bind(out, el, handler, callback, __needCurrObj, rptKey), elm);
+			addBind(handler.bind(extInterface, elm), extInterface.xrBind.bind(extInterface, el, handler, callback, __needCurrObj, rptKey), elm);
 
 			const eventHandler = event => callback(event.currentTarget, cObjProp | rptKey);
 			elm.removeEventListener('change', el2eventHandler.get(elm));
@@ -256,6 +246,7 @@ var App = new (function () {
 							updGroup[k].remove();
 					}
 				}
+				
 				var newEl = null
 				var fragment = new DocumentFragment();
 
@@ -268,9 +259,9 @@ var App = new (function () {
 						group[key] = newEl;
 
 						if (bindCallback)
-							out.xrBind(newEl, bindHandle, bindCallback, false, key);
+							extInterface.xrBind(newEl, bindHandle, bindCallback, false, key);
 						else if (bindHandle)
-							out.bind(newEl, bindHndle, key);
+							extInterface.bind(newEl, bindHndle, key);
 
 						fragment.append(newEl);
 					}
@@ -284,5 +275,6 @@ var App = new (function () {
 
 		unbind: _unbind,
 	};
-	return out;
+
+	return extInterface;
 })();
