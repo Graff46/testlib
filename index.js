@@ -1,5 +1,10 @@
 var App = new (function () {
-	var getEl = el => el instanceof Element ? el : document.querySelector(el);
+	function getEl (el)  {
+		if (el instanceof Element) 
+			return el;
+		else
+			return document.querySelector(el);
+	};
 
 	var isProxy = Symbol('isProxy');
 
@@ -21,9 +26,10 @@ var App = new (function () {
 		let story = Object.create(null);
 		story.upd = handler;
 		story.res = resHandler;
+		
 		el2handlerBind.set(el, story);
 
-		parents.get(currentObjProp.obj).forEach(obj => {
+		parents.get(currentObjProp.obj).forEach(function (obj) {
 			const story = bindReset.get(obj);
 			if (story)
 				story.add(el);
@@ -48,7 +54,7 @@ var App = new (function () {
 		el2handlerRept.set(el, handler);
 		El2group.set(el, group);
 
-		const insertHandler = obj => {
+		const insertHandler = function (obj) {
 			const story = repeatStore.get(obj);
 
 			if (story)
@@ -57,6 +63,7 @@ var App = new (function () {
 				repeatStore.set(obj, (new Set()).add(el));
 		}
 
+		insertHandler(currentObjProp.obj[currentObjProp.prop]);
 		parents.get(currentObjProp.obj[currentObjProp.prop]).forEach(insertHandler);
 	}
 
@@ -65,13 +72,15 @@ var App = new (function () {
 
 		el2handlerBind.delete(elm);
 
+		el.value = null;
+
 		if (onlyBind) return;
 
 		el2handlerRept.delete(elm);
 
 		const group = El2group.get(elm);
 		if (group) {
-			Object.values(group).forEach(el => el.remove())
+			Object.values(group).forEach(function(el) {el.remove()});
 			elm.hidden = false;
 		};
 	}
@@ -122,21 +131,15 @@ var App = new (function () {
 				var storeProps = bindReset.get(receiver);
 				var tmp = null;
 
-				if (storeProps)
-					storeProps.forEach(el => {
-					if (tmp = el2handlerBind.get(el)) tmp.res();
-				});
+				if (storeProps) storeProps.forEach(function (el) {if (tmp = el2handlerBind.get(el)) tmp.res();});
 
-				if ((storeProps = bindUpd.get(receiver)) && (storeProps = storeProps[prop])) storeProps.forEach(el => {
-					if (tmp = el2handlerBind.get(el)) tmp.upd();
-				});
+				if ((storeProps = bindUpd.get(receiver)) && (storeProps = storeProps[prop])) 
+					storeProps.forEach(function (el) {if (tmp = el2handlerBind.get(el)) tmp.upd();});
 
 				if (repeatStore.has(receiver)) {
 					storeProps = new Set(repeatStore.get(receiver));
 					repeatStore.delete(receiver);
-					storeProps.forEach(el => {
-						if (tmp = el2handlerRept.get(el)) tmp();
-					});
+					storeProps.forEach(function (el) {if (tmp = el2handlerRept.get(el)) tmp();});
 				}
 
 				return result;
@@ -155,13 +158,13 @@ var App = new (function () {
 					obj = obj2prox.get(target);
 
 				if (store = repeatStore.get(obj))
-					store.forEach(el => _unbind(el));
+					store.forEach(function (el) {_unbind(el)});
 
 				if (store = bindReset.get(obj))
-					store.forEach(el => _unbind(el, true));
+					store.forEach(function (el) {_unbind(el, true)});
 				
 				if ((store = bindUpd.get(obj)) && (store = store[prop]))
-					store.forEach(el => _unbind(el, true));
+					store.forEach(function (el) {_unbind(el, true)});
 				
 				return Reflect.deleteProperty(target, prop);
 			},
@@ -169,27 +172,41 @@ var App = new (function () {
 	}
 
 	return {
-		buildData: obj => buildData(obj, obj),
+		buildData: function (obj) {
+			return buildData(obj, null);
+		},
 
 		bind: function (elSel, hndl, args = false) {
-			function bindHandler(el, handler, arg = false) {
-				const elm = getEl(el);
+			function callback(val, el, src) {
+				return src.obj[src.prop] = val;
+			};
 
-				needReadGetterFlag = true;
-				elm.value = handler(arg) ?? null;
-				needReadGetterFlag = false;
+			function handler(el) {
+				return el.value = hndl(args);
+			};
 
-				addBind(() => elm.value = handler(arg) ?? null, () => bindHandler(el, handler, arg), elm);
+			return this.xrBind(elSel, handler, callback, true);
+		},
 
-				var src = Object.assign(Object.create(null), currentObjProp);
+		xrBind: function (el, handler, callback, __needCurrObj = false) {
+			const elm = getEl(el);
 
-				const eventHandler = event => src.obj[src.prop] = event.currentTarget.value ?? null;
-				elm.removeEventListener('change', el2eventHandler.get(elm));
-				el2eventHandler.set(elm, eventHandler);
-				elm.addEventListener('change', eventHandler);
-			}
+			needReadGetterFlag = true;
+			handler(elm);
+			needReadGetterFlag = false;
 
-			return bindHandler(elSel, hndl, args);
+			var cObjProp = null;
+			if (__needCurrObj)
+				cObjProp = Object.assign(Object.create(null), currentObjProp);
+
+			addBind(handler.bind(this, elm), this.xrBind.bind(this, el, handler, callback, __needCurrObj), elm);
+
+			const eventHandler = function (event) {
+				return callback(event.currentTarget.value, event.currentTarget, cObjProp);
+			};
+			elm.removeEventListener('change', el2eventHandler.get(elm));
+			el2eventHandler.set(elm, eventHandler);
+			elm.addEventListener('change', eventHandler);
 		},
 
 		repeat: function (el, iterHandle, bindHandle) {
@@ -202,7 +219,7 @@ var App = new (function () {
 
 				var group = Object.create(null);
 
-				addRepeat(() => handler.call(this, elm, iterHndle, bindHndle, group), elm, group);
+				addRepeat(handler.bind(this, elm, iterHndle, bindHndle, group), elm, group);
 
 				if (updGroup) {
 					for (const k in updGroup) {
@@ -232,11 +249,11 @@ var App = new (function () {
 				elm.hidden = true;
 				elm.insertAdjacentHTML('afterEnd', elHTML);
 
-				keys.forEach(key => {
+				keys.forEach( function (key) {
 					group[key] = document.querySelector(`[__key="${key}"]`);
 
 					if (bindHandle) this.bind(group[key], bindHndle, key);
-				});
+				}, this);
 
 				keys = null;
 			}
