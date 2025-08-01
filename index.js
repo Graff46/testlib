@@ -3,7 +3,6 @@ var App = new (function () {
 
 	var isProxy = Symbol('isProxy');
 	var mask 	= Symbol('mask');
-	var max 	= Symbol('max');
 
 	var currentObjProp  = null;
 
@@ -16,10 +15,8 @@ var App = new (function () {
 	var bindReset		= Object.create(null);
 	var bindUpd			= Object.create(null);
 
-	var maxDeep			= 1;
-
-	function _eachBit(code, collector, el) {
-		function insert(bcode) {
+	var _eachBit = (code, collector, el) => {
+		var insert = bcode => {
 			if (story = collector[bcode])
 				story.push(el);
 			else
@@ -41,7 +38,7 @@ var App = new (function () {
 		}
 	}
 
-	function addBind(handler, resHandler, el) {
+	var addBind = (handler, resHandler, el) => {
 		let story = Object.create(null);
 		story.upd = handler;
 		story.res = resHandler;
@@ -64,7 +61,7 @@ var App = new (function () {
 		return _eachBit(code, bindReset, el);
 	}
 
-	function addRepeat(handler, el, group) {
+	var addRepeat = (handler, el, group) => {
 		el2handlerRept.set(el, handler);
 		El2group.set(el, group);
 
@@ -75,12 +72,14 @@ var App = new (function () {
 		);
 	}
 
-	function _unbind(el, onlyBind = false) {
+	var _unbind = (el, onlyBind = false) => {
 		const elm = getEl(el);
 
 		el2handlerBind.delete(elm);
 
 		if (onlyBind) return;
+
+		el.value = null;
 
 		el2handlerRept.delete(elm);
 
@@ -94,15 +93,13 @@ var App = new (function () {
 	var needReadGetterFlag  = false;
 	var skeepProxySetFlag   = false;
 
-	function buildData (obj, code = 1) {
+	var buildData = (obj, code = 1) => {
 		let length = 0;
 		let num = code;
 		do {
 			length++;
 			num >>= 1; // сдвигаем вправо на 1 бит
 		} while (num !== 0);
-
-		maxDeep = Math.max(length);
 
 		return new Proxy(obj, {
 			mask: code,
@@ -160,18 +157,18 @@ var App = new (function () {
 
 				if (skeepProxySetFlag) return result;
 
-				if (storeRepeats) storeRepeats.forEach(el => {
+				if (storeRepeats) storeRepeats.forEach(function (el) {
 					if (el2handlerRept.has(el))
 						el2handlerRept.get(el)();
 				});
 
-				if (storebinds) storebinds.forEach(el => {
+				if (storebinds) storebinds.forEach(function (el) {
 					if (el2handlerBind.has(el))
 						el2handlerBind.get(el).res();
 				});
 
 				if ((storebinds = bindUpd[receiver[mask]]) && (storebinds = storebinds[prop])) {
-					storebinds.forEach(el => {
+					storebinds.forEach(function (el) {
 						if (el2handlerBind.has(el))
 							el2handlerBind.get(el).upd();
 					});
@@ -180,7 +177,7 @@ var App = new (function () {
 				return result;
 			},
 
-			deleteProperty: function(target, prop) {
+			deleteProperty: (target, prop) => {
 				var obj = null;
 				var store = null;
 
@@ -208,54 +205,59 @@ var App = new (function () {
 		});
 	}
 
-	return {
+	var out = {
 		buildData: obj => buildData(obj),
 
-		bind: function (elSel, hndl, args = false) {
-			function bindHandler(el, handler, arg = false) {
-				const elm = getEl(el);
+		bind: (elSel, hndl, args = false) => {
+			const callback = (el, _, src) => src.obj[src.prop] = el.value;
 
-				needReadGetterFlag = true;
-				elm.value = handler(arg) ?? null;
-				needReadGetterFlag = false;
+			const handler = el => el.value = hndl(args);
 
-				addBind(() => elm.value = handler(arg) ?? null, () => bindHandler(el, handler, arg), elm);
-
-				var src = Object.assign(Object.create(null), currentObjProp);
-
-				const eventHandler = event => src.obj[src.prop] = event.currentTarget.value ?? null;
-				elm.removeEventListener('change', el2eventHandler.get(elm));
-				el2eventHandler.set(elm, eventHandler);
-				elm.addEventListener('change', eventHandler);
-			}
-
-			return bindHandler(elSel, hndl, args);
+			return out.xrBind(elSel, handler, callback, true);
 		},
 
-		repeat: function (el, iterHandle, bindHandle) {
+		xrBind: (el, handler, callback, __needCurrObj, rptKey) => {
+			const elm = getEl(el);
+
+			needReadGetterFlag = true;
+			handler(elm, rptKey);
+			needReadGetterFlag = false;
+
+			var cObjProp = null;
+			if (__needCurrObj)
+				cObjProp = Object.assign(Object.create(null), currentObjProp);
+
+			addBind(handler.bind(out, elm), out.xrBind.bind(out, el, handler, callback, __needCurrObj, rptKey), elm);
+
+			const eventHandler = event => callback(event.currentTarget, cObjProp | rptKey);
+			elm.removeEventListener('change', el2eventHandler.get(elm));
+			el2eventHandler.set(elm, eventHandler);
+
+			elm.addEventListener('change', eventHandler);
+		},
+
+		repeat: (el, iterHandle, bindHandle, xrBindCallback) => {
 			var elmObj = getEl(el);
 
-			function handler(elm, iterHndle, bindHndle, updGroup = null) {
+			const handler = (elm, iterHndle, bindHndle, bindCallback, updGroup = null) => {
 				needReadGetterFlag = true;
 				var iter = iterHndle();
 				needReadGetterFlag = false;
 
 				var group = Object.create(null);
 
-				addRepeat(() => handler.call(this, elm, iterHndle, bindHndle, group), elm, group);
+				addRepeat(handler.bind(null, elm, iterHndle, bindHndle, bindCallback, group), elm, group);
 
 				if (updGroup) {
 					for (const k in updGroup) {
-						if (!(k in iter))
-							updGroup[k].remove();
+						if (iter[k])
+							group[k] = updGroup[k];
 						else
-							group[k] = document.querySelector(`[__key="${k}"]`);
+							updGroup[k].remove();
 					}
 				}
-
-				var elHTML = String();
 				var newEl = null
-				var keys = [];
+				var fragment = new DocumentFragment();
 
 				for (const key in iter) {
 					if ((!updGroup) || (!(key in updGroup))) {
@@ -263,25 +265,24 @@ var App = new (function () {
 						newEl.hidden = false;
 						newEl.setAttribute('__key', key);
 
-						elHTML = elHTML.concat(newEl.outerHTML);
+						group[key] = newEl;
 
-						keys.push(key);
+						if (bindCallback)
+							out.xrBind(newEl, bindHandle, bindCallback, false, key);
+						else if (bindHandle)
+							out.bind(newEl, bindHndle, key);
+
+						fragment.append(newEl);
 					}
 				}
 
 				elm.hidden = true;
-				elm.insertAdjacentHTML('afterEnd', elHTML);
-
-				keys.forEach(key => {
-					group[key] = document.querySelector(`[__key="${key}"]`);
-					if (bindHandle) this.bind(group[key], bindHndle, key);
-				});
-				keys = null;
+				elm.after(fragment);
 			}
-
-			return handler.call(this, elmObj, iterHandle, bindHandle);
+			return handler(elmObj, iterHandle, bindHandle, xrBindCallback);
 		},
 
 		unbind: _unbind,
 	};
+	return out;
 })();
