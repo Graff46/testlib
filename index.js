@@ -118,7 +118,7 @@ var App = new (function () {
 					this.props.add(prop);
 					this.mask <<= this.props.size - 1;
 
-					receiver[prop] = buildData(target[prop]);
+					receiver[prop] = buildData(target[prop], ((this.mask << 1) | 1));
 					skeepProxySetFlag = false;
 				}
 
