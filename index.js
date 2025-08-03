@@ -183,7 +183,7 @@ var App = (() => {
 
 			addBind(handler.bind(null, elm), extInterface.xrBind.bind(null, el, handler, callback, __needCurrObj, rptKey), elm);
 
-			const eventHandler = event => callback(event.currentTarget, cObjProp | rptKey);
+			const eventHandler = event => callback(event.currentTarget, cObjProp || rptKey);
 			elm.removeEventListener('change', el2eventHandler.get(elm));
 			el2eventHandler.set(elm, eventHandler);
 
