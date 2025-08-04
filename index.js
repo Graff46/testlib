@@ -199,7 +199,7 @@ var App = (() => {
 		buildData: obj => buildData(obj),
 
 		bind: (elSel, hndl, args = false) => {
-			const callback = (el, _, src) => src.obj[src.prop] = el.value;
+			const callback = (el, src) => src.obj[src.prop] = el.value;
 
 			const handler = el => el.value = hndl(args);
 
@@ -217,7 +217,7 @@ var App = (() => {
 			if (__needCurrObj)
 				cObjProp = Object.assign(Object.create(null), currentObjProp);
 
-			addBind(handler.bind(extInterface, elm), extInterface.xrBind.bind(extInterface, el, handler, callback, __needCurrObj, rptKey), elm);
+			addBind(handler.bind(extInterface, elm, rptKey), extInterface.xrBind.bind(extInterface, el, handler, callback, __needCurrObj, rptKey), elm);
 
 			const eventHandler = event => callback(event.currentTarget, cObjProp || rptKey);
 			elm.removeEventListener('change', el2eventHandler.get(elm));
