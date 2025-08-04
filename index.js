@@ -1,6 +1,8 @@
 var App = (() => {
 	var getEl = el => (el instanceof Element) ? el : document.querySelector(el);
 
+	var eventType = 'change';
+
 	var isProxy = Symbol('isProxy');
 
 	var currentObjProp  = null;
@@ -164,7 +166,7 @@ var App = (() => {
 		buildData: obj => buildData(obj),
 
 		bind: (elSel, hndl, args) => {
-			const callback = (el, _, cop) => cop.obj[cop.prop] = el.value;
+			const callback = (el, cop) => cop.obj[cop.prop] = el.value;
 			const handler = el => el.value = hndl(args);
 
 			return extInterface.xrBind(elSel, handler, callback, true);
@@ -181,13 +183,15 @@ var App = (() => {
 			if (__needCurrObj)
 				cObjProp = Object.assign(Object.create(null), currentObjProp);
 
-			addBind(handler.bind(null, elm), extInterface.xrBind.bind(null, el, handler, callback, __needCurrObj, rptKey), elm);
+			addBind(handler.bind(null, elm, rptKey), extInterface.xrBind.bind(null, elm, handler, callback, __needCurrObj, rptKey), elm);
 
-			const eventHandler = event => callback(event.currentTarget, cObjProp || rptKey);
-			elm.removeEventListener('change', el2eventHandler.get(elm));
-			el2eventHandler.set(elm, eventHandler);
+			elm.removeEventListener(eventType, el2eventHandler.get(elm));
 
-			elm.addEventListener('change', eventHandler);
+			if (callback) {
+				const eventHandler = event => callback(event.currentTarget, cObjProp || rptKey);
+				el2eventHandler.set(elm, eventHandler);
+				elm.addEventListener(eventType, eventHandler);
+			}
 		},
 
 		repeat: (el, iterHandle, bindHandle, xrBindCallback) => {
@@ -239,6 +243,10 @@ var App = (() => {
 		},
 
 		unbind: _unbind,
+
+		setSetting: () => {
+			eventType = 'input';
+		}
 	};
 
 	return extInterface;
