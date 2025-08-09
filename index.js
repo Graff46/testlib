@@ -1,7 +1,7 @@
-var App = (() => {
+var App = (settingBits = 0) => {
 	var getEl = el => (el instanceof Element) ? el : document.querySelector(el);
 
-	var eventType = 'change';
+	var eventType = settingBits & 0b1 ? 'input' : 'change';
 
 	var isProxy = Symbol('isProxy');
 
@@ -31,7 +31,7 @@ var App = (() => {
 			if (story)
 				story.add(el);
 			else
-				bindReset.set(obj, (new Set()).add(el))
+				bindReset.set(obj, (new Set()).add(el));
 		});
 
 		story = bindUpd.get(currentObjProp.obj);
@@ -217,7 +217,6 @@ var App = (() => {
 				
 				var newEl = null
 				var fragment = new DocumentFragment();
-
 				for (const key in iter) {
 					if ((!updGroup) || (!(key in updGroup))) {
 						newEl = elm.cloneNode(true);
@@ -243,11 +242,9 @@ var App = (() => {
 		},
 
 		unbind: _unbind,
-
-		setSetting: () => {
-			eventType = 'input';
-		}
 	};
 
 	return extInterface;
-})();
+};
+
+App.eventTypeInput = 0b1;
