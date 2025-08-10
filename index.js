@@ -1,5 +1,7 @@
-var App = (() => {
+var App = (settingBits = 0) => {
 	var getEl = el => el instanceof Element ? el : document.querySelector(el);
+
+	var eventType = settingBits & 0b1 ? 'input' : 'change';
 
 	var isProxy = Symbol('isProxy');
 	var mask 	= Symbol('mask');
@@ -219,11 +221,13 @@ var App = (() => {
 
 			addBind(handler.bind(extInterface, elm, rptKey), extInterface.xrBind.bind(extInterface, el, handler, callback, __needCurrObj, rptKey), elm);
 
-			const eventHandler = event => callback(event.currentTarget, cObjProp || rptKey);
-			elm.removeEventListener('change', el2eventHandler.get(elm));
-			el2eventHandler.set(elm, eventHandler);
+			elm.removeEventListener(eventType, el2eventHandler.get(elm));
 
-			elm.addEventListener('change', eventHandler);
+			if (callback) {
+				const eventHandler = event => callback(event.currentTarget, cObjProp || rptKey);
+				el2eventHandler.set(elm, eventHandler);
+				elm.addEventListener(eventType, eventHandler);
+			}
 		},
 
 		repeat: (el, iterHandle, bindHandle, xrBindCallback) => {
@@ -277,4 +281,6 @@ var App = (() => {
 	};
 
 	return extInterface;
-})();
+};
+
+App.eventTypeInput = 0b1;
