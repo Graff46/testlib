@@ -1,144 +1,144 @@
-function App (wobj) {
-    var getEl = el => el instanceof Element ? el : document.querySelector(el);
-    var isProxy = Symbol('isProxy');
+var App = (() => {
+	var getEl = el => el instanceof Element ? el : document.querySelector(el);
+	var isProxy = Symbol('isProxy');
 
-    var data2id        = new Set();
-    var tempPath       = new Map();
-    var repeatStore    = new Set();
+	return (wobj, settingBits = 0) => {
+		var eventType = settingBits & 0b1 ? 'input' : 'change';
 
-    function resetTempPath() {
-        tempPath.clear();
-    }
+		var data2id         = new Set();
+		var tempPath        = new Map();
+		var repeatStore     = new Set();
+		var el2eventHandler = new Map();
 
-    function addBind(handler) {
-        data2id.add(handler)
-        resetTempPath();
-    }
+		var addBind = handler => data2id.add(handler);
 
-    function addRepeat(handler) {
-        repeatStore.add(handler);
-        resetTempPath();
-    }
+		var addRepeat = handler => repeatStore.add(handler);
 
-    var needReadGetterFlag = false;
-    var skeepProxySetFlag = false;
+		var needReadGetterFlag = false;
+		var skeepProxySetFlag = false;
 
-    function buildData(obj) {
-        resetTempPath();
+		var buildData = obj => {
+		   tempPath.clear();
 
-        return new Proxy(obj, {
-            get: function (target, prop, receiver) {
-                if (prop === isProxy) return true;
+			return new Proxy(obj, {
+				get: (target, prop, receiver) => {
+					if (prop === isProxy) return true;
 
-                if (needReadGetterFlag) {
-                    if ((target[prop] instanceof Object) && (!(target[prop][isProxy]))) {
-                        skeepProxySetFlag = true;
-                        receiver[prop] = buildData(target[prop]);
-                        skeepProxySetFlag = false;
-                    }
+					if (needReadGetterFlag) {
+						if ((target[prop] instanceof Object) && (!(target[prop][isProxy]))) {
+							skeepProxySetFlag = true;
+							receiver[prop] = buildData(target[prop]);
+							skeepProxySetFlag = false;
+						}
 
-                    tempPath.set(receiver, prop);
-                }
+						tempPath.set(receiver, prop);
+					}
 
-                return Reflect.get(target, prop, receiver);
-            },
+					return Reflect.get(target, prop, receiver);
+				},
 
-            set: function (target, prop, val, receiver) {
-                const cond = (!skeepProxySetFlag) && (val instanceof Object);
+				set: (target, prop, val, receiver) => {
+					const cond = (!skeepProxySetFlag) && (val instanceof Object);
 
-                if (cond) val = buildData(val);
+					if (cond) val = buildData(val);
 
-                const result = Reflect.set(target, prop, val, receiver);
+					const result = Reflect.set(target, prop, val, receiver);
 
-                if (skeepProxySetFlag) return result;
+					if (skeepProxySetFlag) return result;
+					
+					const tmp = new Set(repeatStore);
+					repeatStore.clear();
+					tmp.forEach(handler => handler());
 
-                data2id.forEach(handler => handler());
-                
-                const tmp = new Set(repeatStore);
-                repeatStore.clear();
-                tmp.forEach(handler => handler());
+					data2id.forEach(handler => handler());
 
-                return result;
-            },
-        });
-    }
+					return result;
+				},
+			});
+		}
 
-    var workData = buildData(wobj);
+		var workData = buildData(wobj);
 
-    return {
-        getData: function() {
-            return workData;
-        },
+		var extInterface = {
+			getData: () => workData,
 
-        bind: function (el, handler, arg = null) {
-            const elm = getEl(el);
+			bind: (el, handler, args) => {
+				const collback = (el, cop) => cop.reduce(
+					(stack, prop, i, arr) => ++i === arr.length ? stack[prop] = el.value : stack[prop],
+					workData,
+				);
 
-            needReadGetterFlag = true;
-            elm.value = handler(workData, arg);
-            needReadGetterFlag = false;
+				const handlr = (workData, arg, elm) => elm.value = handler(workData, arg, elm);
 
-            const propPath = Array.from(tempPath.values());
+				return extInterface.xrBind(el, handlr, collback, true, args);
+			},
 
-            addBind(() => elm.value = handler(workData, arg));
+			xrBind: (el, handler, collback, __needCurrObj, arg) => {
+				const elm = getEl(el);
 
-            elm.addEventListener('change', function (event) {
-                propPath.reduce(
-                    (stack, prop, i) => ++i === propPath.length ? stack[prop] = event.currentTarget.value : stack[prop],
-                    arg,
-                );
-            });
-        },
+				tempPath.clear();
+				needReadGetterFlag = true;
+				handler(workData, arg, elm);
+				needReadGetterFlag = false;
 
-        repeat: function (el, iterHandle, bindHandle) {
-            const elmObj = getEl(el);
+				var cObjProp = __needCurrObj ? Array.from(tempPath.values()) : null;
 
-            function handler(elm, iterHndle, bindHndle, updGroup = null) {
-                needReadGetterFlag = true;
-                var iter = iterHndle(workData);
-                needReadGetterFlag = false;
+				addBind(handler.bind(null, workData, arg, elm));
 
-                var group = Object.create(null);
+				elm.removeEventListener(eventType, el2eventHandler.get(elm));
 
-                if (updGroup) {
-                    for (const k in updGroup) {
-                        if (!(k in iter))
-                            updGroup[k].remove();
-                        else
-                            group[k] = document.querySelector(`[__key="${k}"]`);
-                    }
-                }
+				if (collback) {
+					const eventHandler = event => collback(event.currentTarget, cObjProp || arg);
+					el2eventHandler.set(elm, eventHandler);
+					elm.addEventListener(eventType, eventHandler);
+				}
+			},
 
-                var elHTML = String();
-                var newEl = null
-                var keys = [];
+			repeat: (el, iterHandle, bindHandle, xrBindCallback, updGroup) => {
+				const elm = getEl(el);
 
-                for (const key in iter) {
-                    if ((!updGroup) || (!(key in updGroup))) {
-                        newEl = elm.cloneNode(true);
-                        newEl.hidden = false;
-                        newEl.setAttribute('__key', key);
+				needReadGetterFlag = true;
+				var iter = iterHandle(workData);
+				needReadGetterFlag = false;
 
-                        elHTML = elHTML.concat(newEl.outerHTML);
+				var group = Object.create(null);
 
-                        keys.push(key);
-                    }
-                }
+				if (updGroup) {
+					for (const k in updGroup) {
+						if (iter[k])
+							group[k] = updGroup[k];
+						else
+							updGroup[k].remove();
+					}
+				}
 
-                elm.hidden = true;
-                elm.insertAdjacentHTML('afterEnd', elHTML);
+				var newEl = null
+				var fragment = new DocumentFragment();
 
-                keys.forEach(key => {
-                    group[key] = document.querySelector(`[__key="${key}"]`);
+				for (const key in iter) {
+					if ((!updGroup) || (!(key in updGroup))) {
+						newEl = elm.cloneNode(true);
+						newEl.hidden = false;
+						newEl.setAttribute('__key', key);
 
-                    if (bindHandle) this.bind(group[key], bindHndle, key);
-                });
+						group[key] = newEl;
 
-                addRepeat(() => handler.call(this, elm, iterHndle, bindHndle, group));
+						if (xrBindCallback)
+							extInterface.xrBind(newEl, bindHandle, xrBindCallback, false, key);
+						else if (bindHandle)
+							extInterface.bind(newEl, bindHandle, key);
 
-                keys = null;
-            }
+						fragment.append(newEl);
+					}
+				}
 
-            handler.call(this, elmObj, iterHandle, bindHandle);
-        },
-    };
-};
+				elm.hidden = true;
+				elm.after(fragment);
+
+				addRepeat(extInterface.repeat.bind(null, elm, iterHandle, bindHandle, xrBindCallback, group));
+			},
+		};
+
+		return extInterface;
+	};
+})();
