@@ -192,52 +192,47 @@ var App = (() => {
 				}
 			},
 
-			repeat: (el, iterHandle, bindHandle, xrBindCallback) => {
-				var elmObj = getEl(el);
+			repeat: (el, iterHandle, bindHandle, xrBindCallback, updGroup = null) => {
+				var elm = getEl(el);
 
-				var handler = (elm, iterHndle, bindHndle, bindCallback, updGroup = null) => {
-					needReadGetterFlag = true;
-					var iter = iterHndle();
-					needReadGetterFlag = false;
+                needReadGetterFlag = true;
+                var iter = iterHandle();
+                needReadGetterFlag = false;
 
-					var group = Object.create(null);
+                var group = Object.create(null);
 
-					addRepeat(handler.bind(null, elm, iterHndle, bindHndle, bindCallback, group), elm, group);
+                addRepeat(extInterface.repeat.bind(null, elm, iterHandle, bindHandle, xrBindCallback, group), elm, group);
 
-					if (updGroup) {
-						for (const k in updGroup) {
-							if (iter[k])
-								group[k] = updGroup[k];
-							else
-								updGroup[k].remove();
-						}
-					}
-					
-					var newEl = null
-					var fragment = new DocumentFragment();
+                if (updGroup) {
+                    for (const k in updGroup) {
+                        if (iter[k])
+                            group[k] = updGroup[k];
+                        else
+                            updGroup[k].remove();
+                    }
+                }
+                
+                var newEl = null
+                var fragment = new DocumentFragment();
+                for (const key in iter) {
+                    if ((!updGroup) || (!(key in updGroup))) {
+                        newEl = elm.cloneNode(true);
+                        newEl.hidden = false;
+                        newEl.setAttribute('__key', key);
 
-					for (const key in iter) {
-						if ((!updGroup) || (!(key in updGroup))) {
-							newEl = elm.cloneNode(true);
-							newEl.hidden = false;
-							newEl.setAttribute('__key', key);
+                        group[key] = newEl;
 
-							group[key] = newEl;
+                        if (xrBindCallback)
+                            extInterface.xrBind(newEl, bindHandle, xrBindCallback, false, key);
+                        else if (bindHandle)
+                            extInterface.bind(newEl, bindHandle, key);
 
-							if (bindCallback)
-								extInterface.xrBind(newEl, bindHandle, bindCallback, false, key);
-							else if (bindHandle)
-								extInterface.bind(newEl, bindHndle, key);
+                        fragment.append(newEl);
+                    }
+                }
 
-							fragment.append(newEl);
-						}
-					}
-
-					elm.hidden = true;
-					elm.after(fragment);
-				}
-
-				return handler(elmObj, iterHandle, bindHandle, xrBindCallback);
+                elm.hidden = true;
+                elm.after(fragment);
 			},
 
 			unbind: _unbind,
