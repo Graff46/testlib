@@ -2,7 +2,7 @@ const obj = {
     a: {                         //a-1-1
         b: {                     //b-3-11
             c: {d: 1, d2: 2,}    //c-7-111 { d-15-1111 }
-        }, 
+        },
     },
 
     aa: {
@@ -28,3 +28,4 @@ setTimeout(() => { y.b.c.d = 3; /*myApp.bind('.i3', x => yy.bb.cc.dd)*/;}, 3000)
 setTimeout(() => { y.b.c = {d: 4, d2: 5, d3: 6 }; /*myApp.unbind('.i2')*/}, 4000);
 setTimeout(() => { yy.bb = {cc: {dd: 44, dd2: 5, dd3: 6 }}; /*myApp.unbind('.l3')*/}, 5000);
 setTimeout(() => yy.bb = {cc: {dd : 7}}, 6000);
+setTimeout(() => delete y.b.c, 7000);
